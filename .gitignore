@@ -1,0 +1,28 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Secrets
+esp32/led_controller/secrets.h
+
+# Docker volumes (if local)
+postgres_data/
+mosquitto_data/
+mosquitto_log/
+
+# OS
+.DS_Store
+Thumbs.db

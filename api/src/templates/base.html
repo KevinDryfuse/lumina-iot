@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}LUMINA // SYSTEM{% endblock %}</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'tron-cyan': '#00f7ff',
+                        'tron-blue': '#0080ff',
+                        'tron-dark': '#0a0a0f',
+                        'tron-panel': '#0d1117',
+                        'tron-border': '#1a3a4a',
+                    },
+                    fontFamily: {
+                        'mono': ['Share Tech Mono', 'Consolas', 'monospace'],
+                    },
+                    boxShadow: {
+                        'tron': '0 0 10px rgba(0, 247, 255, 0.3), 0 0 20px rgba(0, 247, 255, 0.1)',
+                        'tron-lg': '0 0 20px rgba(0, 247, 255, 0.4), 0 0 40px rgba(0, 247, 255, 0.2)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts - Tech Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <style>
+        * {
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        body {
+            background: #0a0a0f;
+            background-image:
+                linear-gradient(rgba(0, 247, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 247, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* Scanline effect */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.1),
+                rgba(0, 0, 0, 0.1) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            z-index: 9999;
+        }
+
+        /* Glowing text */
+        .glow {
+            text-shadow: 0 0 10px rgba(0, 247, 255, 0.8), 0 0 20px rgba(0, 247, 255, 0.5);
+        }
+
+        .glow-subtle {
+            text-shadow: 0 0 5px rgba(0, 247, 255, 0.5);
+        }
+
+        /* Border glow */
+        .border-glow {
+            box-shadow: 0 0 10px rgba(0, 247, 255, 0.3), inset 0 0 10px rgba(0, 247, 255, 0.1);
+        }
+
+        /* Custom color picker */
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 60px;
+            height: 60px;
+            cursor: pointer;
+            border-radius: 4px;
+            background: transparent;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch {
+            border: 2px solid #00f7ff;
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(0, 247, 255, 0.5);
+        }
+
+        /* Range slider */
+        input[type="range"] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type="range"]::-webkit-slider-track {
+            height: 4px;
+            background: linear-gradient(90deg, #1a3a4a, #00f7ff);
+            border-radius: 2px;
+            box-shadow: 0 0 5px rgba(0, 247, 255, 0.3);
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #00f7ff;
+            border-radius: 50%;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(0, 247, 255, 0.8);
+        }
+
+        /* Button hover effects */
+        .tron-btn {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+        .tron-btn::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 247, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+        .tron-btn:hover::before {
+            left: 100%;
+        }
+
+        /* Blinking cursor effect */
+        .cursor-blink::after {
+            content: "_";
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        /* Pulse animation for online status */
+        .pulse-glow {
+            animation: pulse-glow 2s infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 5px rgba(0, 247, 255, 0.5); }
+            50% { box-shadow: 0 0 15px rgba(0, 247, 255, 0.8), 0 0 25px rgba(0, 247, 255, 0.4); }
+        }
+
+        /* HTMX loading */
+        .htmx-request .htmx-indicator {
+            display: inline-block;
+        }
+        .htmx-indicator {
+            display: none;
+        }
+
+        /* Text input styling */
+        input[type="text"], input[type="password"] {
+            background: rgba(0, 247, 255, 0.05);
+            border: 1px solid #1a3a4a;
+            transition: all 0.3s;
+        }
+        input[type="text"]:focus, input[type="password"]:focus {
+            border-color: #00f7ff;
+            box-shadow: 0 0 10px rgba(0, 247, 255, 0.3);
+            outline: none;
+        }
+    </style>
+</head>
+<body class="text-tron-cyan min-h-screen">
+    {% block content %}{% endblock %}
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+
+    <script>
+        // Show toast notification
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `px-4 py-2 border ${
+                type === 'success'
+                    ? 'border-tron-cyan bg-tron-dark text-tron-cyan'
+                    : 'border-red-500 bg-tron-dark text-red-400'
+            } font-mono text-sm shadow-tron`;
+            toast.innerHTML = `> ${message}`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Listen for HTMX events
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            const message = event.detail.target.dataset.message;
+            if (message) {
+                showToast(message);
+            }
+        });
+    </script>
+</body>
+</html>

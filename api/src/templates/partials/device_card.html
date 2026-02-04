@@ -1,0 +1,283 @@
+<div
+    id="device-{{ device.device_id }}"
+    class="border border-tron-border bg-tron-panel/50 p-6 shadow-tron hover:border-tron-cyan/50 transition-all"
+    {% if message %}data-message="{{ message }}"{% endif %}
+>
+    <!-- Header -->
+    <div class="flex justify-between items-start mb-6">
+        <div class="flex-1 mr-4">
+            <div class="flex items-center gap-2 group">
+                <h3 class="text-lg glow-subtle tracking-wide">
+                    {{ (device.friendly_name or device.device_id) | upper }}
+                </h3>
+                <button
+                    onclick="this.closest('.group').nextElementSibling.classList.toggle('hidden'); this.closest('.group').classList.toggle('hidden');"
+                    class="text-tron-border hover:text-tron-cyan opacity-0 group-hover:opacity-100 transition"
+                    title="Edit designation"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                </button>
+            </div>
+            <!-- Edit name form -->
+            <form
+                hx-post="/devices/{{ device.device_id }}/name"
+                hx-target="#device-{{ device.device_id }}"
+                hx-swap="outerHTML"
+                class="hidden mt-2 flex items-center gap-2"
+            >
+                <input
+                    type="text"
+                    name="friendly_name"
+                    value="{{ device.friendly_name or '' }}"
+                    placeholder="ENTER DESIGNATION..."
+                    class="flex-1 px-2 py-1 text-sm text-tron-cyan"
+                >
+                <button type="submit" class="tron-btn px-2 py-1 border border-tron-cyan text-xs">[SAVE]</button>
+                <button
+                    type="button"
+                    onclick="this.closest('form').classList.add('hidden'); this.closest('form').previousElementSibling.classList.remove('hidden');"
+                    class="px-2 py-1 border border-tron-border text-tron-border text-xs hover:border-tron-cyan hover:text-tron-cyan"
+                >[X]</button>
+            </form>
+            {% if device.friendly_name %}
+            <p class="text-xs text-tron-border mt-1">ID: {{ device.device_id }}</p>
+            {% endif %}
+        </div>
+        <span class="flex items-center gap-2 text-xs {% if device.online %}text-tron-cyan{% else %}text-red-400{% endif %}">
+            <span class="w-2 h-2 rounded-full {% if device.online %}bg-tron-cyan pulse-glow{% else %}bg-red-400{% endif %}"></span>
+            {{ "ONLINE" if device.online else "OFFLINE" }}
+        </span>
+    </div>
+
+    <!-- Power Toggle -->
+    <div class="mb-6 flex items-center justify-between border-b border-tron-border pb-4">
+        <span class="text-xs text-tron-border uppercase tracking-wide">Power_State</span>
+        <div class="flex gap-2">
+            <form
+                hx-post="/devices/{{ device.device_id }}/power"
+                hx-target="#device-{{ device.device_id }}"
+                hx-swap="outerHTML"
+                class="inline"
+            >
+                <input type="hidden" name="power" value="on">
+                <button
+                    type="submit"
+                    class="tron-btn px-4 py-2 text-xs uppercase tracking-wide border transition
+                        {% if device.power %}
+                            border-tron-cyan text-tron-cyan bg-tron-cyan/20 shadow-tron
+                        {% else %}
+                            border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
+                        {% endif %}
+                    "
+                >
+                    [ON]
+                </button>
+            </form>
+            <form
+                hx-post="/devices/{{ device.device_id }}/power"
+                hx-target="#device-{{ device.device_id }}"
+                hx-swap="outerHTML"
+                class="inline"
+            >
+                <input type="hidden" name="power" value="off">
+                <button
+                    type="submit"
+                    class="tron-btn px-4 py-2 text-xs uppercase tracking-wide border transition
+                        {% if not device.power %}
+                            border-red-500 text-red-400 bg-red-500/20
+                        {% else %}
+                            border-tron-border text-tron-border hover:border-red-500 hover:text-red-400
+                        {% endif %}
+                    "
+                >
+                    [OFF]
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Color & Brightness -->
+    <form
+        hx-post="/devices/{{ device.device_id }}/settings"
+        hx-target="#device-{{ device.device_id }}"
+        hx-swap="outerHTML"
+        class="mb-6"
+    >
+        <div class="flex items-center gap-4 mb-4">
+            <label class="text-xs text-tron-border uppercase tracking-wide">Color_Output</label>
+            <input
+                type="color"
+                name="color"
+                value="#{{ '%02x%02x%02x' | format(device.color.r, device.color.g, device.color.b) }}"
+            >
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-xs text-tron-border uppercase tracking-wide mb-2">
+                Power_Level: <span class="text-tron-cyan" id="brightness-value-{{ device.device_id }}">{{ device.brightness }}%</span>
+            </label>
+            <input
+                type="range"
+                name="brightness"
+                min="0"
+                max="100"
+                value="{{ device.brightness }}"
+                class="w-full h-2 cursor-pointer"
+                oninput="document.getElementById('brightness-value-{{ device.device_id }}').textContent = this.value + '%'"
+            >
+        </div>
+
+        <button
+            type="submit"
+            class="tron-btn px-4 py-2 border border-tron-cyan text-sm uppercase tracking-wide hover:bg-tron-cyan/10"
+        >
+            [EXECUTE]
+            <span class="htmx-indicator ml-2">...</span>
+        </button>
+    </form>
+
+    <!-- Effects -->
+    <div>
+        <label class="block text-xs text-tron-border uppercase tracking-wide mb-3">> Effect_Protocols</label>
+
+        <!-- Classics -->
+        <div class="mb-3">
+            <div class="text-xs text-tron-border/50 mb-2">// STANDARD</div>
+            <div class="flex flex-wrap gap-2">
+                {% set classic_effects = [
+                    ("none", "OFF"),
+                    ("rainbow", "RAINBOW"),
+                    ("breathing", "PULSE"),
+                    ("chase", "CHASE"),
+                    ("sparkle", "SPARKLE")
+                ] %}
+                {% for effect_id, effect_name in classic_effects %}
+                <form
+                    hx-post="/devices/{{ device.device_id }}/effect"
+                    hx-target="#device-{{ device.device_id }}"
+                    hx-swap="outerHTML"
+                    class="inline"
+                >
+                    <input type="hidden" name="effect" value="{{ effect_id }}">
+                    <button
+                        type="submit"
+                        class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
+                            {% if device.effect == effect_id %}
+                                border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
+                            {% else %}
+                                border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
+                            {% endif %}
+                        "
+                    >
+                        {{ effect_name }}
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Party -->
+        <div class="mb-3">
+            <div class="text-xs text-tron-border/50 mb-2">// PARTY</div>
+            <div class="flex flex-wrap gap-2">
+                {% set party_effects = [
+                    ("fire", "FIRE"),
+                    ("confetti", "CONFETTI"),
+                    ("cylon", "CYLON"),
+                    ("strobe", "STROBE")
+                ] %}
+                {% for effect_id, effect_name in party_effects %}
+                <form
+                    hx-post="/devices/{{ device.device_id }}/effect"
+                    hx-target="#device-{{ device.device_id }}"
+                    hx-swap="outerHTML"
+                    class="inline"
+                >
+                    <input type="hidden" name="effect" value="{{ effect_id }}">
+                    <button
+                        type="submit"
+                        class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
+                            {% if device.effect == effect_id %}
+                                border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
+                            {% else %}
+                                border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
+                            {% endif %}
+                        "
+                    >
+                        {{ effect_name }}
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Ambient -->
+        <div class="mb-3">
+            <div class="text-xs text-tron-border/50 mb-2">// AMBIENT</div>
+            <div class="flex flex-wrap gap-2">
+                {% set ambient_effects = [
+                    ("ocean", "OCEAN"),
+                    ("aurora", "AURORA"),
+                    ("candle", "CANDLE")
+                ] %}
+                {% for effect_id, effect_name in ambient_effects %}
+                <form
+                    hx-post="/devices/{{ device.device_id }}/effect"
+                    hx-target="#device-{{ device.device_id }}"
+                    hx-swap="outerHTML"
+                    class="inline"
+                >
+                    <input type="hidden" name="effect" value="{{ effect_id }}">
+                    <button
+                        type="submit"
+                        class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
+                            {% if device.effect == effect_id %}
+                                border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
+                            {% else %}
+                                border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
+                            {% endif %}
+                        "
+                    >
+                        {{ effect_name }}
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Holiday -->
+        <div>
+            <div class="text-xs text-tron-border/50 mb-2">// HOLIDAY</div>
+            <div class="flex flex-wrap gap-2">
+                {% set holiday_effects = [
+                    ("christmas", "XMAS"),
+                    ("usa", "USA")
+                ] %}
+                {% for effect_id, effect_name in holiday_effects %}
+                <form
+                    hx-post="/devices/{{ device.device_id }}/effect"
+                    hx-target="#device-{{ device.device_id }}"
+                    hx-swap="outerHTML"
+                    class="inline"
+                >
+                    <input type="hidden" name="effect" value="{{ effect_id }}">
+                    <button
+                        type="submit"
+                        class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
+                            {% if device.effect == effect_id %}
+                                border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
+                            {% else %}
+                                border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
+                            {% endif %}
+                        "
+                    >
+                        {{ effect_name }}
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}LUMINA // ACCESS TERMINAL{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center p-4">
+    <div class="border border-tron-border bg-tron-panel/80 p-8 w-full max-w-md shadow-tron">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="w-4 h-4 bg-tron-cyan rounded-full pulse-glow mx-auto mb-4"></div>
+            <h1 class="text-2xl glow tracking-widest">LUMINA</h1>
+            <p class="text-tron-border text-sm mt-2 tracking-wide">// SYSTEM ACCESS TERMINAL</p>
+        </div>
+
+        <!-- Boot sequence text -->
+        <div class="text-xs text-tron-border mb-6 space-y-1">
+            <p>> INITIALIZING SECURITY PROTOCOL...</p>
+            <p>> AWAITING CREDENTIALS<span class="cursor-blink"></span></p>
+        </div>
+
+        {% if error %}
+        <div class="border border-red-500 bg-red-900/20 text-red-400 px-4 py-3 mb-6 text-sm">
+            > ERROR: {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/login" class="space-y-6">
+            <div>
+                <label for="username" class="block text-xs text-tron-border uppercase tracking-wide mb-2">
+                    User_ID
+                </label>
+                <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    required
+                    class="w-full px-4 py-3 text-tron-cyan placeholder-tron-border/50 tracking-wide"
+                    placeholder="ENTER USER ID..."
+                >
+            </div>
+
+            <div>
+                <label for="password" class="block text-xs text-tron-border uppercase tracking-wide mb-2">
+                    Access_Key
+                </label>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    required
+                    class="w-full px-4 py-3 text-tron-cyan placeholder-tron-border/50 tracking-wide"
+                    placeholder="ENTER ACCESS KEY..."
+                >
+            </div>
+
+            <button
+                type="submit"
+                class="tron-btn w-full py-3 px-4 border border-tron-cyan text-tron-cyan uppercase tracking-widest hover:bg-tron-cyan/10 transition"
+            >
+                [AUTHENTICATE]
+            </button>
+        </form>
+
+        <!-- Footer -->
+        <div class="mt-8 text-center text-xs text-tron-border/50">
+            LUMINA IOT CONTROL SYSTEM v1.0
+        </div>
+    </div>
+</div>
+{% endblock %}
