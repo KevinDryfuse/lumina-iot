@@ -57,7 +57,6 @@ app = FastAPI(
     title="Lumina IoT",
     description="LED strip controller with HTMX UI",
     version="0.1.0",
-    lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -65,11 +64,14 @@ app = FastAPI(
 
 # ===================
 # Internal API App (port 8001) - has docs, no auth
+# The API owns the lifespan: DB init, MQTT connection, device loading.
+# Since both apps run in the same process, the UI shares this state.
 # ===================
 api_app = FastAPI(
     title="Lumina IoT API",
     description="Internal API for Lumina IoT - no auth required",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 
