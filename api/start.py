@@ -1,29 +1,28 @@
 """
 Start both the UI server (port 8000) and API server (port 8001).
+
+Both run in a single process so they share the same MQTT connection
+and in-memory device state. The UI app's lifespan handles all
+initialization (DB, MQTT, device loading).
 """
 
-import subprocess
-import sys
+import asyncio
+import uvicorn
 
 
-def main():
-    # Start UI server on port 8000
-    ui_process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"],
+async def main():
+    ui_config = uvicorn.Config(
+        "src.main:app", host="0.0.0.0", port=8000, log_level="info",
+    )
+    api_config = uvicorn.Config(
+        "src.main:api_app", host="0.0.0.0", port=8001, log_level="info",
     )
 
-    # Start API server on port 8001
-    api_process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "src.main:api_app", "--host", "0.0.0.0", "--port", "8001"],
-    )
+    ui_server = uvicorn.Server(ui_config)
+    api_server = uvicorn.Server(api_config)
 
-    try:
-        ui_process.wait()
-        api_process.wait()
-    except KeyboardInterrupt:
-        ui_process.terminate()
-        api_process.terminate()
+    await asyncio.gather(ui_server.serve(), api_server.serve())
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

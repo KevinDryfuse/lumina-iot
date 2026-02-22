@@ -6,19 +6,20 @@ LED strip controller with HTMX-based UI.
 Two apps are exposed:
 - app (port 8000): UI only, with auth, no docs - exposed to internet
 - api_app (port 8001): JSON API with docs, no auth - internal only
+
+All device control logic lives in services.py. Both apps call
+the service layer instead of touching MQTT/devices directly.
 """
 
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Form, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .db import get_db, init_db, Device, DeviceState
+from .db import get_db, init_db
 from .auth import (
     authenticate_user,
     create_session_token,
@@ -27,7 +28,8 @@ from .auth import (
     SESSION_COOKIE_NAME,
     User,
 )
-from .mqtt import mqtt_client, devices
+from .mqtt import mqtt_client
+from . import services as device_service
 
 # Template directory
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -37,19 +39,14 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
-    # Initialize database
     init_db()
     print("Database initialized")
 
-    # Load devices from database
     mqtt_client.load_devices_from_db()
-
-    # Connect to MQTT
     mqtt_client.connect()
 
     yield
 
-    # Cleanup
     mqtt_client.disconnect()
 
 
@@ -113,14 +110,13 @@ async def login(
             status_code=401,
         )
 
-    # Create session and redirect
     token = create_session_token(user.id)
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
-        max_age=60 * 60 * 24 * 7,  # 7 days
+        max_age=60 * 60 * 24 * 7,
         samesite="lax",
     )
     return response
@@ -149,13 +145,13 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "user": user,
-            "devices": list(devices.values()),
+            "devices": device_service.get_all_devices(),
         },
     )
 
 
 # ===================
-# Device Control (HTMX endpoints)
+# Device Control (HTMX endpoints — thin wrappers around service layer)
 # ===================
 @app.get("/devices/{device_id}/card", response_class=HTMLResponse)
 async def get_device_card(
@@ -164,15 +160,10 @@ async def get_device_card(
     user: User = Depends(require_auth),
 ):
     """Get a single device card (for HTMX refresh)."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
-
+    device = device_service.get_device(device_id)
     return templates.TemplateResponse(
         "partials/device_card.html",
-        {
-            "request": request,
-            "device": devices[device_id],
-        },
+        {"request": request, "device": device},
     )
 
 
@@ -184,27 +175,18 @@ async def set_color(
     user: User = Depends(require_auth),
 ):
     """Set device color."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
-
-    # Parse hex color (#rrggbb)
     hex_color = color.lstrip("#")
     r = int(hex_color[0:2], 16)
     g = int(hex_color[2:4], 16)
     b = int(hex_color[4:6], 16)
 
-    # Send command to device
-    mqtt_client.send_command(device_id, {"color": {"r": r, "g": g, "b": b}})
+    device = device_service.set_color(device_id, r, g, b)
 
-    # Update local state optimistically
-    devices[device_id]["color"] = {"r": r, "g": g, "b": b}
-
-    # Return updated device card
     return templates.TemplateResponse(
         "partials/device_card.html",
         {
             "request": request,
-            "device": devices[device_id],
+            "device": device,
             "message": f"Color set to RGB({r}, {g}, {b})",
         },
     )
@@ -219,30 +201,20 @@ async def set_settings(
     user: User = Depends(require_auth),
 ):
     """Set device color and brightness together."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
-
-    # Parse hex color (#rrggbb)
     hex_color = color.lstrip("#")
     r = int(hex_color[0:2], 16)
     g = int(hex_color[2:4], 16)
     b = int(hex_color[4:6], 16)
 
-    # Send commands to device
-    mqtt_client.send_command(device_id, {"color": {"r": r, "g": g, "b": b}})
-    mqtt_client.send_command(device_id, {"brightness": brightness})
+    device_service.set_color(device_id, r, g, b)
+    device = device_service.set_brightness(device_id, brightness)
 
-    # Update local state optimistically
-    devices[device_id]["color"] = {"r": r, "g": g, "b": b}
-    devices[device_id]["brightness"] = brightness
-
-    # Return updated device card
     return templates.TemplateResponse(
         "partials/device_card.html",
         {
             "request": request,
-            "device": devices[device_id],
-            "message": f"Settings applied",
+            "device": device,
+            "message": "Settings applied",
         },
     )
 
@@ -255,21 +227,13 @@ async def set_effect(
     user: User = Depends(require_auth),
 ):
     """Set device effect."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = device_service.set_effect(device_id, effect)
 
-    # Send command to device
-    mqtt_client.send_command(device_id, {"effect": effect})
-
-    # Update local state optimistically
-    devices[device_id]["effect"] = effect
-
-    # Return updated device card
     return templates.TemplateResponse(
         "partials/device_card.html",
         {
             "request": request,
-            "device": devices[device_id],
+            "device": device,
             "message": f"Effect set to {effect}",
         },
     )
@@ -283,23 +247,14 @@ async def set_power(
     user: User = Depends(require_auth),
 ):
     """Toggle device power."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
-
     power_on = power == "on"
+    device = device_service.set_power(device_id, power_on)
 
-    # Send command to device
-    mqtt_client.send_command(device_id, {"power": power_on})
-
-    # Update local state optimistically
-    devices[device_id]["power"] = power_on
-
-    # Return updated device card
     return templates.TemplateResponse(
         "partials/device_card.html",
         {
             "request": request,
-            "device": devices[device_id],
+            "device": device,
             "message": f"Power {'ON' if power_on else 'OFF'}",
         },
     )
@@ -310,28 +265,16 @@ async def set_device_name(
     request: Request,
     device_id: str,
     friendly_name: str = Form(...),
-    db: Session = Depends(get_db),
     user: User = Depends(require_auth),
 ):
     """Set device friendly name."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
+    device = device_service.set_name(device_id, friendly_name)
 
-    # Update in database
-    device = db.query(Device).filter(Device.device_id == device_id).first()
-    if device:
-        device.friendly_name = friendly_name.strip() or None
-        db.commit()
-
-    # Update in-memory state
-    devices[device_id]["friendly_name"] = friendly_name.strip() or None
-
-    # Return updated device card
     return templates.TemplateResponse(
         "partials/device_card.html",
         {
             "request": request,
-            "device": devices[device_id],
+            "device": device,
             "message": f"Name updated to '{friendly_name}'" if friendly_name.strip() else "Name cleared",
         },
     )
@@ -349,52 +292,40 @@ async def api_health():
 @api_app.get("/devices")
 async def api_list_devices():
     """List all devices."""
-    return list(devices.values())
+    return device_service.get_all_devices()
 
 
 @api_app.get("/devices/{device_id}")
 async def api_get_device(device_id: str):
     """Get a specific device."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
-    return devices[device_id]
+    return device_service.get_device(device_id)
 
 
 @api_app.post("/devices/{device_id}/color")
 async def api_set_color(device_id: str, r: int, g: int, b: int):
     """Set device color."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
-    mqtt_client.send_command(device_id, {"color": {"r": r, "g": g, "b": b}})
-    devices[device_id]["color"] = {"r": r, "g": g, "b": b}
-    return devices[device_id]
+    return device_service.set_color(device_id, r, g, b)
 
 
 @api_app.post("/devices/{device_id}/brightness")
 async def api_set_brightness(device_id: str, brightness: int):
     """Set device brightness (0-100)."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
-    mqtt_client.send_command(device_id, {"brightness": brightness})
-    devices[device_id]["brightness"] = brightness
-    return devices[device_id]
+    return device_service.set_brightness(device_id, brightness)
 
 
 @api_app.post("/devices/{device_id}/effect")
 async def api_set_effect(device_id: str, effect: str):
     """Set device effect."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
-    mqtt_client.send_command(device_id, {"effect": effect})
-    devices[device_id]["effect"] = effect
-    return devices[device_id]
+    return device_service.set_effect(device_id, effect)
 
 
 @api_app.post("/devices/{device_id}/power")
 async def api_set_power(device_id: str, power: bool):
     """Set device power on/off."""
-    if device_id not in devices:
-        raise HTTPException(status_code=404, detail="Device not found")
-    mqtt_client.send_command(device_id, {"power": power})
-    devices[device_id]["power"] = power
-    return devices[device_id]
+    return device_service.set_power(device_id, power)
+
+
+@api_app.post("/devices/{device_id}/name")
+async def api_set_name(device_id: str, friendly_name: str):
+    """Set device friendly name."""
+    return device_service.set_name(device_id, friendly_name)

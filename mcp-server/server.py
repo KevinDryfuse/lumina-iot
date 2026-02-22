@@ -19,10 +19,7 @@ VALID_EFFECTS = [
     "christmas", "usa",
 ]
 
-mcp = FastMCP(
-    "Lumina IoT",
-    description="Control LED strip lights in the house",
-)
+mcp = FastMCP("Lumina IoT")
 
 
 async def _get_target_devices(client: httpx.AsyncClient, device_id: str | None) -> list[str]:
