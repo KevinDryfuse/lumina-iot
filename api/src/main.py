@@ -9,8 +9,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from .db import init_db
-from .mqtt import mqtt_client
+from .db import init_db, SessionLocal, Device
+from .mqtt import mqtt_client, devices as devices_dict, MQTT_BROKER, MQTT_PORT
 from . import services as device_service
 
 
@@ -40,6 +40,26 @@ app = FastAPI(
 async def health():
     """Health check endpoint."""
     return {"status": "ok", "mqtt_connected": mqtt_client.connected}
+
+
+@app.get("/debug")
+async def debug():
+    """Debug endpoint — shows internal state for troubleshooting."""
+    db = SessionLocal()
+    try:
+        db_device_count = db.query(Device).count()
+        db_device_ids = [d.device_id for d in db.query(Device).all()]
+    finally:
+        db.close()
+    return {
+        "mqtt_connected": mqtt_client.connected,
+        "mqtt_broker": MQTT_BROKER,
+        "mqtt_port": MQTT_PORT,
+        "in_memory_device_count": len(devices_dict),
+        "in_memory_device_ids": list(devices_dict.keys()),
+        "db_device_count": db_device_count,
+        "db_device_ids": db_device_ids,
+    }
 
 
 @app.get("/devices")

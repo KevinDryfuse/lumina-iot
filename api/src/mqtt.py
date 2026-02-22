@@ -6,6 +6,8 @@ Handles communication with ESP32 devices via Mosquitto broker.
 
 import json
 import os
+import threading
+import time
 from datetime import datetime
 from typing import Callable, Optional
 
@@ -30,18 +32,28 @@ class MQTTClient:
     def __init__(self):
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.client.on_connect = self._on_connect
+        self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
         self.connected = False
+        self._broker = MQTT_BROKER
+        self._port = MQTT_PORT
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         """Handle connection to broker."""
-        print(f"Connected to MQTT broker: {reason_code}")
-        self.connected = True
+        if reason_code == 0:
+            print(f"Connected to MQTT broker successfully")
+            self.connected = True
+            client.subscribe("devices/announce")
+            client.subscribe("lights/+/state")
+            print("Subscribed to device topics")
+        else:
+            print(f"MQTT connection failed with reason code: {reason_code}")
+            self.connected = False
 
-        # Subscribe to device topics
-        client.subscribe("devices/announce")
-        client.subscribe("lights/+/state")
-        print("Subscribed to device topics")
+    def _on_disconnect(self, client, userdata, flags, reason_code, properties):
+        """Handle disconnection from broker."""
+        print(f"Disconnected from MQTT broker: {reason_code}")
+        self.connected = False
 
     def _on_message(self, client, userdata, msg):
         """Handle incoming MQTT messages."""
@@ -151,10 +163,25 @@ class MQTTClient:
             on_state_change(device_id, devices[device_id])
 
     def connect(self):
-        """Connect to the MQTT broker."""
-        print(f"Connecting to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
-        self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        self.client.loop_start()
+        """Connect to the MQTT broker with retry logic."""
+        def _connect_with_retry():
+            max_retries = 10
+            for attempt in range(1, max_retries + 1):
+                try:
+                    print(f"Connecting to MQTT broker at {self._broker}:{self._port} (attempt {attempt}/{max_retries})")
+                    self.client.connect(self._broker, self._port, 60)
+                    self.client.loop_start()
+                    print("MQTT loop started, waiting for CONNACK...")
+                    return
+                except Exception as e:
+                    print(f"MQTT connection attempt {attempt} failed: {e}")
+                    if attempt < max_retries:
+                        time.sleep(2)
+                    else:
+                        print(f"MQTT failed after {max_retries} attempts. Will rely on paho auto-reconnect.")
+                        self.client.loop_start()
+
+        _connect_with_retry()
 
     def disconnect(self):
         """Disconnect from the MQTT broker."""
