@@ -4,22 +4,22 @@ Lumina IoT - FastAPI Application
 LED strip controller with HTMX-based UI.
 
 Two apps are exposed:
-- app (port 8000): UI only, with auth, no docs - exposed to internet
-- api_app (port 8001): JSON API with docs, no auth - internal only
+- app (port 8000): UI only, with auth, no docs
+- api_app (port 8001): JSON API with docs, no auth
 
-All device control logic lives in services.py. Both apps call
-the service layer instead of touching MQTT/devices directly.
+All device control logic lives in services.py. The UI knows
+nothing about MQTT or devices — it only calls the service layer.
+Initialization (DB, MQTT) is handled by start.py before either app runs.
 """
 
-from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Form, Depends, HTTPException
+from fastapi import FastAPI, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .db import get_db, init_db
+from .db import get_db
 from .auth import (
     authenticate_user,
     create_session_token,
@@ -28,26 +28,11 @@ from .auth import (
     SESSION_COOKIE_NAME,
     User,
 )
-from .mqtt import mqtt_client
 from . import services as device_service
 
 # Template directory
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup and shutdown events."""
-    init_db()
-    print("Database initialized")
-
-    mqtt_client.load_devices_from_db()
-    mqtt_client.connect()
-
-    yield
-
-    mqtt_client.disconnect()
 
 
 # ===================
@@ -64,24 +49,12 @@ app = FastAPI(
 
 # ===================
 # Internal API App (port 8001) - has docs, no auth
-# The API owns the lifespan: DB init, MQTT connection, device loading.
-# Since both apps run in the same process, the UI shares this state.
 # ===================
 api_app = FastAPI(
     title="Lumina IoT API",
     description="Internal API for Lumina IoT - no auth required",
     version="0.1.0",
-    lifespan=lifespan,
 )
-
-
-# ===================
-# Health Check
-# ===================
-@app.get("/health")
-async def health():
-    """Health check endpoint."""
-    return {"status": "ok", "mqtt_connected": mqtt_client.connected}
 
 
 # ===================
@@ -288,6 +261,7 @@ async def set_device_name(
 @api_app.get("/health")
 async def api_health():
     """Health check endpoint."""
+    from .mqtt import mqtt_client
     return {"status": "ok", "mqtt_connected": mqtt_client.connected}
 
 
