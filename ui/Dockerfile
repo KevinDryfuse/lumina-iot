@@ -8,5 +8,6 @@ COPY pyproject.toml .
 RUN uv pip install --system -e .
 
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -39,16 +39,34 @@ services:
     container_name: lumina-api
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lumina}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-lumina}
-      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
     ports:
-      - "8000:8000"  # UI (expose to internet)
-      - "8001:8001"  # API + docs (internal only)
+      - "8001:8001"
     depends_on:
       postgres:
         condition: service_healthy
       mosquitto:
+        condition: service_started
+    networks:
+      - lumina-net
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: lumina-ui
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lumina}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-lumina}
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
+      API_URL: http://api:8001
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
         condition: service_started
     networks:
       - lumina-net

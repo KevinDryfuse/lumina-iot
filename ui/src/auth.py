@@ -1,11 +1,10 @@
 """
-Authentication module for Lumina IoT.
+Authentication module for the UI service.
 
 Handles user login, sessions, and password hashing.
 """
 
 import os
-from datetime import datetime, timedelta
 from typing import Optional
 
 import bcrypt
@@ -55,8 +54,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optiona
     if not data:
         return None
 
-    user = db.query(User).filter(User.id == data["user_id"]).first()
-    return user
+    return db.query(User).filter(User.id == data["user_id"]).first()
 
 
 def require_auth(request: Request, db: Session = Depends(get_db)) -> User:
