@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "lumina": {
+      "command": "uv",
+      "args": ["run", "--directory", "mcp-server", "python", "server.py"],
+      "env": {
+        "LUMINA_API_URL": "http://192.168.1.55:8001"
+      }
+    }
+  }
+}

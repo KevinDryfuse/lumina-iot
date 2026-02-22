@@ -388,3 +388,13 @@ async def api_set_effect(device_id: str, effect: str):
     mqtt_client.send_command(device_id, {"effect": effect})
     devices[device_id]["effect"] = effect
     return devices[device_id]
+
+
+@api_app.post("/devices/{device_id}/power")
+async def api_set_power(device_id: str, power: bool):
+    """Set device power on/off."""
+    if device_id not in devices:
+        raise HTTPException(status_code=404, detail="Device not found")
+    mqtt_client.send_command(device_id, {"power": power})
+    devices[device_id]["power"] = power
+    return devices[device_id]
