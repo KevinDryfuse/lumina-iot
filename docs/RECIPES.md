@@ -12,7 +12,7 @@ a strip that goes dark and does not say why.
 ## Why there are only two slots
 
 Twelve compiled effects existed before this, and they were not twelve different
-things. Every one answers the same two questions, once per LED, per frame:
+things. They have since been deleted from the firmware; only fire remains. Every one answers the same two questions, once per LED, per frame:
 
 1. **What colour is this LED?** — pick a point in a palette
 2. **How bright is it?** — a number from 0 to 1
@@ -192,8 +192,9 @@ nobody can name.
 
 **Fire.** `effectFire()` diffuses heat between neighbouring pixels — a pixel's
 colour depends on its neighbours' *previous* values, not on `(p, t)` alone. That
-is a genuinely different kind of effect, and it stays compiled. Bending a
-stateless engine around one effect would cost more than it saves.
+is a genuinely different kind of effect, and it is the one thing still compiled
+into the firmware. Bending a stateless engine around one effect would cost more
+than it saves.
 
 **Music.** LIFX's music mode needs an audio signal and an FFT. No palette gets
 you there. It is buildable — the Pi could listen and publish a level over
@@ -218,12 +219,43 @@ and then collecting colours.
 
 ---
 
+## The studio
+
+`/studio` in the web UI runs this same maths in JavaScript on a canvas, at
+60fps. Palette swatches, a dropdown per slot, a field per parameter, and a
+button to push the result to a strip.
+
+It exists because the alternative loop is: change a number, build, flash, walk
+over, squint, change it back. That is slow enough that nobody would ever author
+twenty palettes — which would have made the engine a tidy piece of architecture
+that changed nothing.
+
+The JS is deliberately a structural mirror of `runRecipe()` rather than
+idiomatic JavaScript. The whole value is that a number behaves the same in the
+browser as on the wall, and code that looks the same makes it obvious when one
+side changes.
+
+**One honest difference:** `noise` uses a small value-noise function in the
+browser, where the device uses FastLED's `inoise8` and its particular gradient
+table. The character matches — smooth, drifting, blobby — but the exact pattern
+does not. Everything else is exact.
+
+The LED-count field is also a test. Changing it should **not** change how an
+effect looks, only how finely it is drawn. If it does, normalised position has
+been broken somewhere.
+
 ## Adding an effect
 
-1. Write the recipe (the preview in the web UI runs the same maths in the
-   browser — tune it there rather than by reflashing)
+1. Write the recipe in the studio and watch it
 2. Save it
 3. It appears on every strip in the house, including ones built before the
    effect existed
 
 No firmware build. No cable.
+
+**Except the first time.** A strip on firmware predating the recipe engine will
+accept a recipe effect's *name*, do nothing with it, and report the name back —
+so the button lights up as though it worked. The dashboard now offers such a
+strip only the compiled effects it can actually run. Getting the engine onto a
+strip for the first time needs USB, because OTA arrived in the same firmware;
+every update after that is over the air.
