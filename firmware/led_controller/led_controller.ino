@@ -41,7 +41,7 @@
 // ===================
 // Bump on every build that gets published for OTA. Reported in the announce
 // payload, which is how the server knows which strips are behind.
-#define FW_VERSION 7
+#define FW_VERSION 8
 
 // ===================
 // LED Configuration - runtime, not compile time
@@ -395,6 +395,67 @@ static inline float frac01(float x) { return x - floorf(x); }
 
 /* Palette lookup, wrapping. Circular so a scrolling palette loops without a
  * seam - a linear ramp would jump from the last stop back to the first. */
+/*
+ * Colour order, applied on the way out.
+ *
+ * This was dead config: stored, reconciled with the server, reported in the
+ * announce payload and offered as a six-value dropdown in the web UI - and
+ * never used. STRIP_PINS instantiates addLeds with GRB and nothing else, so
+ * choosing RGB in the UI changed a database row and a strip's NVS and had no
+ * effect whatsoever on the light. A comment in this file claimed it was
+ * "handled separately below". It was not.
+ *
+ * Folding it into the template table was the obvious fix and the wrong one:
+ * order is a third template parameter, so it would multiply 54 instantiations
+ * by six. Instead the buffer is permuted immediately before FastLED.show() and
+ * put back immediately after.
+ *
+ * FastLED, told GRB, emits (g, r, b). So to get some other order on the wire,
+ * store the values that come out as that order - for RGB, the wire needs
+ * (r, g, b), which means storing g'=r and r'=g. Cheap: two passes over at most
+ * 300 pixels, and only when the order is not already GRB.
+ */
+static uint8_t g_orderPerm = 0;   /* index into ORDERS below; 0 is GRB */
+
+static const char *ORDERS[6] = { "GRB", "RGB", "BRG", "RBG", "GBR", "BGR" };
+
+/*
+ * Derived rather than reasoned about: GRB, RGB, BRG and GBR are self-inverse
+ * swaps, but RBG and BGR are three-cycles whose inverse is a DIFFERENT
+ * permutation. Writing these by hand got one of the six wrong on the first
+ * attempt, in a way that would have shown up only as one chipset rendering
+ * slightly odd colours.
+ */
+static void applyOrder(CRGB &c, uint8_t o, bool forward) {
+  uint8_t r = c.r, g = c.g, b = c.b;
+  if (forward) {
+    switch (o) {
+      case 1: c.r = g; c.g = r; c.b = b; break;   /* RGB */
+      case 2: c.r = r; c.g = b; c.b = g; break;   /* BRG */
+      case 3: c.r = b; c.g = r; c.b = g; break;   /* RBG */
+      case 4: c.r = b; c.g = g; c.b = r; break;   /* GBR */
+      case 5: c.r = g; c.g = b; c.b = r; break;   /* BGR */
+      default: break;                             /* GRB - native */
+    }
+  } else {
+    switch (o) {
+      case 1: c.r = g; c.g = r; c.b = b; break;
+      case 2: c.r = r; c.g = b; c.b = g; break;
+      case 3: c.r = g; c.g = b; c.b = r; break;
+      case 4: c.r = b; c.g = g; c.b = r; break;
+      case 5: c.r = b; c.g = r; c.b = g; break;
+      default: break;
+    }
+  }
+}
+
+void showStrip() {
+  if (g_orderPerm == 0) { FastLED.show(); return; }
+  for (int i = 0; i < numLeds; i++) applyOrder(leds[i], g_orderPerm, true);
+  FastLED.show();
+  for (int i = 0; i < numLeds; i++) applyOrder(leds[i], g_orderPerm, false);
+}
+
 static inline CRGB palStop(int i) {
   return g_recipe.palIsDevice[i] ? CRGB(currentR, currentG, currentB)
                                  : g_recipe.pal[i];
@@ -485,7 +546,7 @@ void runRecipe() {
     c.nscale8_video((uint8_t)(v * 255));
     leds[i] = c;
   }
-  FastLED.show();
+  showStrip();
 }
 
 static SampleMode parseSample(const char *m) {
@@ -574,7 +635,7 @@ bool parseRecipe(JsonObject j) {
 // CLASSICS
 void effectRainbow() {
   fill_rainbow(leds, numLeds, effectHue, 7);
-  FastLED.show();
+  showStrip();
   effectHue++;
 }
 
@@ -582,13 +643,13 @@ void effectBreathing() {
   uint8_t breath = beatsin8(12, 20, 255);
   fill_solid(leds, numLeds, CRGB(currentR, currentG, currentB));
   FastLED.setBrightness(map(breath * currentBrightness / 100, 0, 255, 0, 255));
-  FastLED.show();
+  showStrip();
 }
 
 void effectChase() {
   fadeToBlackBy(leds, numLeds, 40);
   leds[effectPos] = CRGB(currentR, currentG, currentB);
-  FastLED.show();
+  showStrip();
   effectPos++;
   if (effectPos >= numLeds) effectPos = 0;
 }
@@ -598,7 +659,7 @@ void effectSparkle() {
   if (random8() < 80) {
     leds[random16(numLeds)] = CRGB(currentR, currentG, currentB);
   }
-  FastLED.show();
+  showStrip();
 }
 
 // PARTY
@@ -625,20 +686,20 @@ void effectFire() {
   for (int i = 0; i < numLeds; i++) {
     leds[i] = HeatColor(heat[i]);
   }
-  FastLED.show();
+  showStrip();
 }
 
 void effectConfetti() {
   fadeToBlackBy(leds, numLeds, 10);
   leds[random16(numLeds)] += CHSV(effectHue + random8(64), 200, 255);
   effectHue++;
-  FastLED.show();
+  showStrip();
 }
 
 void effectCylon() {
   fadeToBlackBy(leds, numLeds, 20);
   leds[effectPos] = CRGB(currentR, currentG, currentB);
-  FastLED.show();
+  showStrip();
 
   effectPos += effectDirection;
   if (effectPos >= numLeds - 1 || effectPos <= 0) {
@@ -654,7 +715,7 @@ void effectStrobe() {
     fill_solid(leds, numLeds, CRGB::Black);
   }
   on = !on;
-  FastLED.show();
+  showStrip();
 }
 
 // CHILL / AMBIENT
@@ -663,7 +724,7 @@ void effectOcean() {
     uint8_t wave = beatsin8(6 + (i % 5), 100, 255, 0, i * 10);
     leds[i] = CRGB(0, wave / 3, wave);
   }
-  FastLED.show();
+  showStrip();
 }
 
 void effectAurora() {
@@ -673,7 +734,7 @@ void effectAurora() {
     leds[i] = CHSV(96 + (sin8(hue) / 8), 255, brightness);  // Greens and blues
   }
   effectHue++;
-  FastLED.show();
+  showStrip();
 }
 
 void effectCandle() {
@@ -681,7 +742,7 @@ void effectCandle() {
     uint8_t flicker = random8(180, 255);
     leds[i] = CRGB(flicker, flicker / 3, 0);  // Warm orange/yellow
   }
-  FastLED.show();
+  showStrip();
 }
 
 // HOLIDAY
@@ -698,7 +759,7 @@ void effectChristmas() {
     int pos = random16(numLeds);
     leds[pos] = (pos % 2 == 0) ? CRGB::Red : CRGB::Green;
   }
-  FastLED.show();
+  showStrip();
 }
 
 void effectUSA() {
@@ -714,7 +775,7 @@ void effectUSA() {
   }
   // Add shimmer
   leds[random16(numLeds)].fadeToBlackBy(random8(50, 150));
-  FastLED.show();
+  showStrip();
 }
 
 void runEffect() {
@@ -800,7 +861,7 @@ void otaProgress(int done, int total) {
   fill_solid(leds, numLeds, CRGB::Black);
   for (int i = 0; i < lit && i < numLeds; i++) leds[i] = CRGB(0, 40, 120);
   FastLED.setBrightness(255);
-  FastLED.show();
+  showStrip();
 }
 
 void handleOta(String url) {
@@ -815,7 +876,7 @@ void handleOta(String url) {
     fill_solid(leds, numLeds, CRGB::Black);
     for (int i = 0; i < 5 && i < numLeds; i++) leds[i] = CRGB(0, 40, 120);
     FastLED.setBrightness(255);
-    FastLED.show();
+    showStrip();
   }
 
   JsonDocument note;
@@ -872,8 +933,8 @@ void handleOta(String url) {
   /* Red for a beat so a failed update is visible without reading a log. */
   if (ledsReady) {
     for (int i = 0; i < 3; i++) {
-      fill_solid(leds, numLeds, CRGB::Red); FastLED.show(); delay(200);
-      fill_solid(leds, numLeds, CRGB::Black); FastLED.show(); delay(200);
+      fill_solid(leds, numLeds, CRGB::Red); showStrip(); delay(200);
+      fill_solid(leds, numLeds, CRGB::Black); showStrip(); delay(200);
     }
     updateLeds();
   }
@@ -946,7 +1007,7 @@ void processCommand(String message) {
       if (ledsReady) {
         fill_solid(leds, numLeds, CRGB(0, 40, 120));
         FastLED.setBrightness(255);
-        FastLED.show();
+        showStrip();
       }
       delay(400);
       ESP.restart();
@@ -965,7 +1026,7 @@ void processCommand(String message) {
 
     if (!powerOn) {
       fill_solid(leds, numLeds, CRGB::Black);
-      FastLED.show();
+      showStrip();
     } else {
       updateLeds();
     }
@@ -1201,9 +1262,16 @@ void setup() {
   }
   FastLED.setBrightness(255);
   fill_solid(leds, numLeds, CRGB::Black);
-  FastLED.show();
+  showStrip();
   Serial.print("LEDs initialized: "); Serial.print(numLeds);
   Serial.print(" on pin "); Serial.println(ledPin);
+
+  g_orderPerm = 0;
+  for (uint8_t i = 0; i < 6; i++) {
+    if (ledOrder == ORDERS[i]) { g_orderPerm = i; break; }
+  }
+  Serial.print("Colour order: "); Serial.print(ORDERS[g_orderPerm]);
+  Serial.println(g_orderPerm ? " (permuted on output)" : " (native)");
 
   /* Restore whatever was last running. A strip that reboots at 3am should come
    * back as itself without waiting for the server to notice and re-send. */

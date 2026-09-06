@@ -12,12 +12,27 @@ from mcp.server.fastmcp import FastMCP
 
 BASE_URL = os.environ.get("LUMINA_API_URL", "http://192.168.1.55:8001")
 
-VALID_EFFECTS = [
-    "none", "rainbow", "breathing", "chase", "sparkle",
-    "fire", "confetti", "cylon", "strobe",
-    "ocean", "aurora", "candle",
-    "christmas", "usa",
-]
+# Effects that are still compiled into the firmware. Everything else is a row
+# in the effects table and is fetched at call time - a hardcoded list here would
+# be a fourth place that has to agree with the firmware, the server and the
+# database about which effects exist, and it would silently omit every effect
+# added since. It already did: none of the six theme palettes were in it.
+COMPILED_EFFECTS = ["none", "fire"]
+
+
+async def _known_effects(client: httpx.AsyncClient) -> dict[str, bool]:
+    """Effect name -> True if it is a stored recipe, False if compiled in."""
+    known = {name: False for name in COMPILED_EFFECTS}
+    try:
+        resp = await client.get(f"{BASE_URL}/effects")
+        resp.raise_for_status()
+        for e in resp.json().get("effects", []):
+            known[e["name"]] = True
+    except (httpx.HTTPError, ValueError):
+        # The compiled two still work with the API unreachable, and the caller
+        # reports the connection failure anyway.
+        pass
+    return known
 
 mcp = FastMCP("Lumina IoT")
 
@@ -150,16 +165,14 @@ async def set_brightness(brightness: int, device_id: str | None = None) -> str:
 async def set_effect(effect: str, device_id: str | None = None) -> str:
     """Set the lighting effect on an LED strip.
 
-    Available effects: none, rainbow, breathing, chase, sparkle, fire, confetti,
-    cylon, strobe, ocean, aurora, candle, christmas, usa
+    Effects are stored in the database, so the available list changes without
+    this file changing. Call list_effects to see what is currently defined.
 
     Args:
-        effect: Effect name (see list above)
+        effect: Effect name. list_effects returns the current set.
         device_id: Target device ID. Omit to set ALL devices.
     """
     effect = effect.lower().strip()
-    if effect not in VALID_EFFECTS:
-        return f"Unknown effect '{effect}'. Valid effects: {', '.join(VALID_EFFECTS)}"
 
     async with httpx.AsyncClient(timeout=10) as client:
         try:
@@ -167,9 +180,21 @@ async def set_effect(effect: str, device_id: str | None = None) -> str:
         except httpx.ConnectError:
             return f"Could not connect to Lumina API at {BASE_URL}. Is Docker Compose running?"
 
+        known = await _known_effects(client)
+        if effect not in known:
+            return (f"Unknown effect '{effect}'. Currently defined: "
+                    f"{', '.join(sorted(known))}")
+
+        # A stored effect is sent as a recipe; the two compiled ones by name.
+        is_recipe = known[effect]
+
         results = []
         for did in targets:
-            resp = await client.post(f"{BASE_URL}/devices/{did}/effect", params={"effect": effect})
+            resp = (await client.post(f"{BASE_URL}/devices/{did}/recipe",
+                                      params={"name": effect})
+                    if is_recipe else
+                    await client.post(f"{BASE_URL}/devices/{did}/effect",
+                                      params={"effect": effect}))
             if resp.status_code == 404:
                 results.append(f"  {did}: not found")
             else:
@@ -179,6 +204,26 @@ async def set_effect(effect: str, device_id: str | None = None) -> str:
                 results.append(f"  {name}: effect set to {effect}")
 
         return f"Set effect to '{effect}':\n" + "\n".join(results)
+
+
+@mcp.tool()
+async def list_effects() -> str:
+    """List every lighting effect currently available, grouped by category."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            resp = await client.get(f"{BASE_URL}/effects")
+            resp.raise_for_status()
+        except httpx.ConnectError:
+            return f"Could not connect to Lumina API at {BASE_URL}. Is Docker Compose running?"
+
+        grouped: dict[str, list[str]] = {}
+        for e in resp.json().get("effects", []):
+            grouped.setdefault(e.get("category") or "custom", []).append(e["name"])
+
+        lines = [f"  {cat}: {', '.join(sorted(names))}"
+                 for cat, names in sorted(grouped.items())]
+        lines.append(f"  compiled: {', '.join(COMPILED_EFFECTS)}")
+        return chr(10).join(["Available effects:"] + lines)
 
 
 @mcp.tool()
