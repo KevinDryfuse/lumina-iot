@@ -60,9 +60,39 @@ def set_brightness(device_id: str, brightness: int) -> dict:
     return _with_online(devices[device_id])
 
 
+# Still compiled into the strip's firmware. Everything else is a recipe and has
+# to be sent as one.
+COMPILED_EFFECTS = {"none", "fire"}
+
+
 def set_effect(device_id: str, effect: str) -> dict:
-    """Set device effect. Returns updated device dict."""
+    """Set one of the compiled effects by name.
+
+    Refuses a name it does not recognise. This endpoint used to accept anything:
+    it would publish the name, the strip would accept it, find no effect by that
+    name, carry on doing whatever it was doing, and report the name back - so
+    every caller saw success and the light never moved. Three separate callers
+    hit that before it was noticed, because nothing anywhere said no.
+
+    A stored effect belongs on /recipe, which sends the palette with it.
+    """
     get_device(device_id)
+
+    if effect not in COMPILED_EFFECTS:
+        db = SessionLocal()
+        try:
+            known = db.query(Effect).filter(Effect.name == effect).first()
+        finally:
+            db.close()
+        if known:
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{effect}' is a stored effect - send it to "
+                       f"/devices/{device_id}/recipe?name={effect} so the strip "
+                       f"gets the palette with it",
+            )
+        raise HTTPException(status_code=404, detail=f"No effect named '{effect}'")
+
     mqtt_client.send_command(device_id, {"effect": effect})
     devices[device_id]["effect"] = effect
     return _with_online(devices[device_id])
