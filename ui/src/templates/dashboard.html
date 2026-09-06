@@ -12,7 +12,7 @@
                 <h1 class="text-xl glow tracking-wider">LUMINA<span class="text-tron-blue">//</span>SYSTEM</h1>
             </div>
             <div class="flex items-center gap-6">
-                <span class="text-tron-border text-sm">USER: <span class="text-tron-cyan">{{ user.username | upper }}</span></span>
+                <span class="text-tron-dim text-sm">USER: <span class="text-tron-cyan">{{ user.username | upper }}</span></span>
                 <a
                     href="/studio"
                     class="tron-btn px-4 py-2 border border-tron-cyan text-tron-cyan text-sm transition uppercase tracking-wide hover:bg-tron-cyan/10"
@@ -31,7 +31,7 @@
 
     <!-- System Status Bar -->
     <div class="border-b border-tron-border bg-tron-panel/50 px-4 py-2">
-        <div class="max-w-7xl mx-auto flex items-center gap-8 text-xs text-tron-border">
+        <div class="max-w-7xl mx-auto flex items-center gap-8 text-xs text-tron-dim">
             <span>SYS_STATUS: <span class="text-tron-cyan">ONLINE</span></span>
             <span>DEVICES: <span class="text-tron-cyan">{{ devices | length }}</span></span>
             <span>PROTOCOL: <span class="text-tron-cyan">MQTT</span></span>
@@ -42,7 +42,7 @@
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 py-8">
         <div class="flex justify-between items-center mb-8">
-            <h2 class="text-lg tracking-wider text-tron-border">> DEVICE_ARRAY</h2>
+            <h2 class="text-lg tracking-wider text-tron-dim">> DEVICE_ARRAY</h2>
             <button
                 hx-get="/"
                 hx-target="body"
@@ -66,7 +66,7 @@
         <div class="text-center py-16 border border-tron-border bg-tron-panel/30">
             <div class="text-4xl mb-4 glow">[ ]</div>
             <h3 class="text-lg tracking-wider mb-2">NO DEVICES DETECTED</h3>
-            <p class="text-tron-border text-sm">
+            <p class="text-tron-dim text-sm">
                 > AWAITING ESP32 CONNECTION ON LOCAL NETWORK...
             </p>
         </div>
@@ -75,7 +75,7 @@
 
     <!-- Footer -->
     <footer class="fixed bottom-0 left-0 right-0 border-t border-tron-border bg-tron-dark/80 backdrop-blur px-4 py-2">
-        <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-tron-border">
+        <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-tron-dim">
             <span>LUMINA IOT CONTROL SYSTEM v1.0</span>
             <span class="text-tron-cyan/50">// END OF LINE</span>
         </div>

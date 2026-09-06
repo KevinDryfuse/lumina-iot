@@ -137,11 +137,37 @@ BUILTIN = {
     "christmas": {
         "label": "XMAS", "category": "holiday",
         "recipe": {
-            "palette": [[220, 0, 0], [0, 160, 0]],
-            "sample": {"mode": "position", "span": 8.0},
-            "level": {"mode": "wave", "min": 0.45, "max": 1.0,
-                      "speed": 0.4, "phase": 6.0, "detune": 1.2},
+            # Stops are REPEATED on purpose. The palette interpolates, so red
+            # straight into green spends half its length in the muddy browns
+            # between them - which is what made the first version of this look
+            # washed out rather than festive. Doubling each colour gives flat
+            # bands with short transitions instead.
+            "palette": [[200, 0, 0], [200, 0, 0], [0, 140, 0], [0, 140, 0]],
+            "sample": {"mode": "position", "span": 6.0},
+            # High floor so the bands stay lit, heavy detune so pixels shimmer
+            # out of step - the twinkle the original got from random8().
+            "level": {"mode": "wave", "min": 0.55, "max": 1.0,
+                      "speed": 0.5, "phase": 9.0, "detune": 2.0},
             "frame_ms": 30,
+        },
+    },
+    "candycane": {
+        "label": "CANDY CANE", "category": "holiday",
+        "recipe": {
+            "palette": [[220, 0, 0], [220, 0, 0], [255, 255, 255], [255, 255, 255]],
+            "sample": {"mode": "scroll", "span": 5.0, "speed": 0.12},
+            "level": {"mode": "solid", "max": 1.0},
+            "frame_ms": 20,
+        },
+    },
+    "twinkle": {
+        "label": "TWINKLE", "category": "holiday",
+        "recipe": {
+            "palette": [[255, 60, 40], [40, 200, 60], [255, 220, 120]],
+            "sample": {"mode": "random"},
+            "level": {"mode": "impulse", "min": 0.05, "max": 1.0,
+                      "rate": 0.5, "decay": 0.94},
+            "frame_ms": 25,
         },
     },
     "usa": {

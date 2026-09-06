@@ -41,7 +41,7 @@
 // ===================
 // Bump on every build that gets published for OTA. Reported in the announce
 // payload, which is how the server knows which strips are behind.
-#define FW_VERSION 8
+#define FW_VERSION 9
 
 // ===================
 // LED Configuration - runtime, not compile time
@@ -629,40 +629,17 @@ bool parseRecipe(JsonObject j) {
 }
 
 // ===================
-// Effects
+// The one effect that is not a recipe
 // ===================
-
-// CLASSICS
-void effectRainbow() {
-  fill_rainbow(leds, numLeds, effectHue, 7);
-  showStrip();
-  effectHue++;
-}
-
-void effectBreathing() {
-  uint8_t breath = beatsin8(12, 20, 255);
-  fill_solid(leds, numLeds, CRGB(currentR, currentG, currentB));
-  FastLED.setBrightness(map(breath * currentBrightness / 100, 0, 255, 0, 255));
-  showStrip();
-}
-
-void effectChase() {
-  fadeToBlackBy(leds, numLeds, 40);
-  leds[effectPos] = CRGB(currentR, currentG, currentB);
-  showStrip();
-  effectPos++;
-  if (effectPos >= numLeds) effectPos = 0;
-}
-
-void effectSparkle() {
-  fadeToBlackBy(leds, numLeds, 20);
-  if (random8() < 80) {
-    leds[random16(numLeds)] = CRGB(currentR, currentG, currentB);
-  }
-  showStrip();
-}
-
-// PARTY
+/*
+ * Fire diffuses heat between neighbouring pixels: a pixel's colour depends on
+ * its neighbours' PREVIOUS values, not on (position, time). The recipe engine
+ * is a pure function of those two things, so this cannot be expressed there and
+ * bending the engine around one effect would cost more than it saves.
+ *
+ * Every other effect that used to live here is now a row in the effects table.
+ * See docs/RECIPES.md.
+ */
 void effectFire() {
   // Fire simulation - heat rises from bottom
   static byte heat[MAX_LEDS];
@@ -689,150 +666,14 @@ void effectFire() {
   showStrip();
 }
 
-void effectConfetti() {
-  fadeToBlackBy(leds, numLeds, 10);
-  leds[random16(numLeds)] += CHSV(effectHue + random8(64), 200, 255);
-  effectHue++;
-  showStrip();
-}
-
-void effectCylon() {
-  fadeToBlackBy(leds, numLeds, 20);
-  leds[effectPos] = CRGB(currentR, currentG, currentB);
-  showStrip();
-
-  effectPos += effectDirection;
-  if (effectPos >= numLeds - 1 || effectPos <= 0) {
-    effectDirection *= -1;
-  }
-}
-
-void effectStrobe() {
-  static bool on = false;
-  if (on) {
-    fill_solid(leds, numLeds, CRGB(currentR, currentG, currentB));
-  } else {
-    fill_solid(leds, numLeds, CRGB::Black);
-  }
-  on = !on;
-  showStrip();
-}
-
-// CHILL / AMBIENT
-void effectOcean() {
-  for (int i = 0; i < numLeds; i++) {
-    uint8_t wave = beatsin8(6 + (i % 5), 100, 255, 0, i * 10);
-    leds[i] = CRGB(0, wave / 3, wave);
-  }
-  showStrip();
-}
-
-void effectAurora() {
-  for (int i = 0; i < numLeds; i++) {
-    uint8_t hue = effectHue + (i * 2);
-    uint8_t brightness = beatsin8(3 + (i % 4), 50, 255, 0, i * 5);
-    leds[i] = CHSV(96 + (sin8(hue) / 8), 255, brightness);  // Greens and blues
-  }
-  effectHue++;
-  showStrip();
-}
-
-void effectCandle() {
-  for (int i = 0; i < numLeds; i++) {
-    uint8_t flicker = random8(180, 255);
-    leds[i] = CRGB(flicker, flicker / 3, 0);  // Warm orange/yellow
-  }
-  showStrip();
-}
-
-// HOLIDAY
-void effectChristmas() {
-  fadeToBlackBy(leds, numLeds, 5);
-  // Alternating red and green with occasional twinkle
-  for (int i = 0; i < numLeds; i++) {
-    if (leds[i].getLuma() < 20) {
-      leds[i] = (i % 2 == 0) ? CRGB(50, 0, 0) : CRGB(0, 50, 0);
-    }
-  }
-  // Random twinkle
-  if (random8() < 60) {
-    int pos = random16(numLeds);
-    leds[pos] = (pos % 2 == 0) ? CRGB::Red : CRGB::Green;
-  }
-  showStrip();
-}
-
-void effectUSA() {
-  int section = numLeds / 3;
-  for (int i = 0; i < numLeds; i++) {
-    if (i < section) {
-      leds[i] = CRGB::Red;
-    } else if (i < section * 2) {
-      leds[i] = CRGB::White;
-    } else {
-      leds[i] = CRGB::Blue;
-    }
-  }
-  // Add shimmer
-  leds[random16(numLeds)].fadeToBlackBy(random8(50, 150));
-  showStrip();
-}
-
 void runEffect() {
-  /* A recipe takes precedence over the compiled effects of the same name, so
-   * an effect can be moved into data one at a time and compared side by side
-   * against the version it is replacing. */
   if (g_haveRecipe) {
     runRecipe();
     delay(g_recipe.frameMs);
     return;
   }
-
-  // Classics
-  if (currentEffect == "rainbow") {
-    effectRainbow();
-    delay(20);
-  } else if (currentEffect == "breathing") {
-    effectBreathing();
-    delay(10);
-  } else if (currentEffect == "chase") {
-    effectChase();
-    delay(30);
-  } else if (currentEffect == "sparkle") {
-    effectSparkle();
-    delay(30);
-  }
-  // Party
-  else if (currentEffect == "fire") {
+  if (currentEffect == "fire") {
     effectFire();
-    delay(30);
-  } else if (currentEffect == "confetti") {
-    effectConfetti();
-    delay(20);
-  } else if (currentEffect == "cylon") {
-    effectCylon();
-    delay(20);
-  } else if (currentEffect == "strobe") {
-    effectStrobe();
-    delay(80);
-  }
-  // Chill
-  else if (currentEffect == "ocean") {
-    effectOcean();
-    delay(20);
-  } else if (currentEffect == "aurora") {
-    effectAurora();
-    delay(30);
-  } else if (currentEffect == "candle") {
-    effectCandle();
-    delay(50);
-  }
-  // Holiday
-  else if (currentEffect == "christmas") {
-    effectChristmas();
-    delay(30);
-  } else if (currentEffect == "usa") {
-    effectUSA();
     delay(30);
   }
 }
@@ -1200,34 +1041,107 @@ void connectWiFi() {
 // ===================
 // MQTT Connection
 // ===================
+/*
+ * Staying connected, without the lights being a status indicator.
+ *
+ * This replaces a blocking connectMqtt() that had three faults, which between
+ * them produced a strip stuck flashing green forever after a long outage and
+ * never recovering:
+ *
+ *  1. connectWiFi() ran only in setup(). If the radio dropped, nothing ever
+ *     brought it back, so the MQTT retry spun against a dead network for as
+ *     long as the strip was powered.
+ *
+ *  2. flashGreen() sat inside the retry loop. After an outage the socket can be
+ *     stale enough that connect() succeeds and connected() is false immediately
+ *     afterwards - so it connected, flashed green, found itself disconnected,
+ *     connected, flashed green, forever. That is the reported symptom exactly.
+ *
+ *  3. Nothing ever gave up. A wedged radio stayed wedged.
+ *
+ * And a fourth thing, which is really the point: the old version BLOCKED. While
+ * it was retrying, the effect stopped rendering, so a network problem turned
+ * the lights off. These are lights. They should keep doing what they were told
+ * whether or not the house has internet, and the network should be repaired
+ * quietly underneath that.
+ *
+ * So: non-blocking, backed off, and after boot the strip is never taken over to
+ * report status again.
+ */
+#define NET_RETRY_MS      5000
+#define NET_GIVE_UP_MS    600000   /* 10 minutes wedged -> reboot */
+
+bool     g_booted = false;        /* setup() finished; stop hijacking the strip */
+uint32_t g_lastNetTry = 0;
+uint32_t g_offlineSince = 0;
+
+void serviceNetwork() {
+  if (mqtt.connected()) {
+    g_offlineSince = 0;
+    return;
+  }
+
+  uint32_t now = millis();
+  if (g_offlineSince == 0) {
+    g_offlineSince = now;
+    Serial.println("Lost the broker - retrying in the background");
+  }
+
+  /* A radio that has been unreachable this long is not going to be argued back
+   * to life. Rebooting is crude and it works, and an unattended strip in a
+   * ceiling has no better option. */
+  if (now - g_offlineSince > NET_GIVE_UP_MS) {
+    Serial.println("Ten minutes without the broker - restarting");
+    delay(100);
+    ESP.restart();
+  }
+
+  if (now - g_lastNetTry < NET_RETRY_MS) return;
+  g_lastNetTry = now;
+
+  /* WiFi first: MQTT cannot succeed without it, and retrying MQTT against a
+   * dead radio is what the old code did forever. */
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi down - reconnecting");
+    WiFi.disconnect();
+    WiFi.begin(wifi_ssid, wifi_password);
+    return;
+  }
+
+  Serial.print("Connecting to MQTT broker at ");
+  Serial.print(mqtt_broker);
+  Serial.print("...");
+
+  if (mqtt.connect(device_id.c_str())) {
+    Serial.println(" connected!");
+    mqtt.subscribe(TOPIC_SET.c_str());
+    announceDevice();
+    confirmOta();
+    /* Only while booting. A reconnect at 3am should not light the room. */
+    if (!g_booted) flashGreen();
+  } else {
+    Serial.print(" failed (rc=");
+    Serial.print(mqtt.state());
+    Serial.println("), will retry");
+  }
+}
+
+/* Boot-time only: block until the broker answers, showing status on the strip,
+ * because at boot there is nothing else for it to display. */
 void connectMqtt() {
   mqtt.setServer(mqtt_broker, mqtt_port);
 
-  while (!mqtt.connected()) {
-    Serial.print("Connecting to MQTT broker at ");
-    Serial.print(mqtt_broker);
-    Serial.print("...");
+  uint32_t start = millis();
+  while (!mqtt.connected() && millis() - start < 60000) {
+    serviceNetwork();
+    showStatus(mqtt.connected() ? CRGB::Green : CRGB::Yellow);
+    delay(20);
+  }
 
-    if (mqtt.connect(device_id.c_str())) {
-      Serial.println(" connected!");
-      mqtt.subscribe(TOPIC_SET.c_str());
-      Serial.print("Subscribed to: ");
-      Serial.println(TOPIC_SET);
-      announceDevice();
-      flashGreen();
-      confirmOta();
-    } else {
-      Serial.print(" failed (rc=");
-      Serial.print(mqtt.state());
-      Serial.println("). Retrying in 5 seconds...");
-
-      // Pulse yellow for 5 seconds
-      unsigned long start = millis();
-      while (millis() - start < 5000) {
-        showStatus(CRGB::Yellow);
-        delay(20);
-      }
-    }
+  if (!mqtt.connected()) {
+    /* Carry on anyway. A strip that cannot reach the broker still has a recipe
+     * in NVS and should run it rather than sit there yellow. */
+    Serial.println("No broker at boot - continuing offline");
   }
 }
 
@@ -1311,15 +1225,17 @@ void setup() {
 
   // Connect to MQTT
   connectMqtt();
+
+  /* From here the strip belongs to whatever effect is running, not to the
+   * network's opinion of itself. */
+  g_booted = true;
 }
 
 // ===================
 // Main Loop
 // ===================
 void loop() {
-  if (!mqtt.connected()) {
-    connectMqtt();
-  }
+  serviceNetwork();
   mqtt.loop();
 
   /* The broker being unreachable is not this firmware's fault, so surviving

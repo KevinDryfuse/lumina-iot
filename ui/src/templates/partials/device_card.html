@@ -12,7 +12,7 @@
                 </h3>
                 <button
                     onclick="this.closest('.group').nextElementSibling.classList.toggle('hidden'); this.closest('.group').classList.toggle('hidden');"
-                    class="text-tron-border hover:text-tron-cyan opacity-0 group-hover:opacity-100 transition"
+                    class="text-tron-dim hover:text-tron-cyan opacity-0 group-hover:opacity-100 transition"
                     title="Edit designation"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -38,11 +38,11 @@
                 <button
                     type="button"
                     onclick="this.closest('form').classList.add('hidden'); this.closest('form').previousElementSibling.classList.remove('hidden');"
-                    class="px-2 py-1 border border-tron-border text-tron-border text-xs hover:border-tron-cyan hover:text-tron-cyan"
+                    class="px-2 py-1 border border-tron-border text-tron-dim text-xs hover:border-tron-cyan hover:text-tron-cyan"
                 >[X]</button>
             </form>
             {% if device.friendly_name %}
-            <p class="text-xs text-tron-border mt-1">ID: {{ device.device_id }}</p>
+            <p class="text-xs text-tron-dim mt-1">ID: {{ device.device_id }}</p>
             {% endif %}
         </div>
         <span class="flex items-center gap-2 text-xs {% if device.online %}text-tron-cyan{% else %}text-red-400{% endif %}">
@@ -53,7 +53,7 @@
 
     <!-- Power Toggle -->
     <div class="mb-6 flex items-center justify-between border-b border-tron-border pb-4">
-        <span class="text-xs text-tron-border uppercase tracking-wide">Power_State</span>
+        <span class="text-xs text-tron-dim uppercase tracking-wide">Power_State</span>
         <div class="flex gap-2">
             <form
                 hx-post="/devices/{{ device.device_id }}/power"
@@ -68,7 +68,7 @@
                         {% if device.power %}
                             border-tron-cyan text-tron-cyan bg-tron-cyan/20 shadow-tron
                         {% else %}
-                            border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
+                            border-tron-border text-tron-dim hover:border-tron-cyan hover:text-tron-cyan
                         {% endif %}
                     "
                 >
@@ -88,7 +88,7 @@
                         {% if not device.power %}
                             border-red-500 text-red-400 bg-red-500/20
                         {% else %}
-                            border-tron-border text-tron-border hover:border-red-500 hover:text-red-400
+                            border-tron-border text-tron-dim hover:border-red-500 hover:text-red-400
                         {% endif %}
                     "
                 >
@@ -106,7 +106,7 @@
         class="mb-6"
     >
         <div class="flex items-center gap-4 mb-4">
-            <label class="text-xs text-tron-border uppercase tracking-wide">Color_Output</label>
+            <label class="text-xs text-tron-dim uppercase tracking-wide">Color_Output</label>
             <input
                 type="color"
                 name="color"
@@ -115,7 +115,7 @@
         </div>
 
         <div class="mb-4">
-            <label class="block text-xs text-tron-border uppercase tracking-wide mb-2">
+            <label class="block text-xs text-tron-dim uppercase tracking-wide mb-2">
                 Power_Level: <span class="text-tron-cyan" id="brightness-value-{{ device.device_id }}">{{ device.brightness }}%</span>
             </label>
             <input
@@ -146,17 +146,17 @@
         adding a light meant editing the sketch and reflashing the right board.
     -->
     <details class="mb-6 border-t border-tron-border pt-4">
-        <summary class="text-xs text-tron-border uppercase tracking-wide cursor-pointer hover:text-tron-cyan">
+        <summary class="text-xs text-tron-dim uppercase tracking-wide cursor-pointer hover:text-tron-cyan">
             &gt; Hardware_Config
             {% if device.config %}
-            <span class="text-tron-border/50 normal-case">
+            <span class="text-tron-dim/75 normal-case">
                 — {{ device.config.led_count }} LEDs, pin {{ device.config.pin }}, {{ device.config.type }}
             </span>
             {% else %}
             <span class="text-red-400/70 normal-case">— not yet reported</span>
             {% endif %}
             {% if device.fw_version %}
-            <span class="text-tron-border/50 normal-case">· fw v{{ device.fw_version }}</span>
+            <span class="text-tron-dim/75 normal-case">· fw v{{ device.fw_version }}</span>
             {% endif %}
         </summary>
 
@@ -167,19 +167,19 @@
             class="mt-4 grid grid-cols-2 gap-3"
         >
             <label class="block">
-                <span class="block text-xs text-tron-border uppercase mb-1">LED_Count</span>
+                <span class="block text-xs text-tron-dim uppercase mb-1">LED_Count</span>
                 <input type="number" name="led_count" min="1" max="300"
                        value="{{ device.config.led_count if device.config else 30 }}"
                        class="w-full px-2 py-1 text-sm text-tron-cyan bg-transparent border border-tron-border">
             </label>
             <label class="block">
-                <span class="block text-xs text-tron-border uppercase mb-1">Data_Pin</span>
+                <span class="block text-xs text-tron-dim uppercase mb-1">Data_Pin</span>
                 <input type="number" name="pin" min="0" max="39"
                        value="{{ device.config.pin if device.config else 5 }}"
                        class="w-full px-2 py-1 text-sm text-tron-cyan bg-transparent border border-tron-border">
             </label>
             <label class="block">
-                <span class="block text-xs text-tron-border uppercase mb-1">Chipset</span>
+                <span class="block text-xs text-tron-dim uppercase mb-1">Chipset</span>
                 <select name="led_type" class="w-full px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
                     {% set current_type = device.config.type if device.config else 'WS2815' %}
                     {% for t in ["WS2815", "WS2812B", "WS2811", "SK6812"] %}
@@ -188,7 +188,7 @@
                 </select>
             </label>
             <label class="block">
-                <span class="block text-xs text-tron-border uppercase mb-1">Color_Order</span>
+                <span class="block text-xs text-tron-dim uppercase mb-1">Color_Order</span>
                 <select name="order" class="w-full px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
                     {% set current_order = device.config.order if device.config else 'GRB' %}
                     {% for o in ["GRB", "RGB", "BRG", "RBG", "GBR", "BGR"] %}
@@ -201,7 +201,7 @@
                     [APPLY]
                     <span class="htmx-indicator ml-2">...</span>
                 </button>
-                <span class="text-xs text-tron-border/60">Restarts the strip</span>
+                <span class="text-xs text-tron-dim/75">Restarts the strip</span>
             </div>
         </form>
 
@@ -223,7 +223,7 @@
             hx-swap="outerHTML"
             class="mt-5 pt-4 border-t border-tron-border/50"
         >
-            <span class="block text-xs text-tron-border uppercase mb-2">&gt; Firmware_Update</span>
+            <span class="block text-xs text-tron-dim uppercase mb-2">&gt; Firmware_Update</span>
             <div class="flex items-center gap-2">
                 <select name="file" class="flex-1 px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
                     {% for img in firmware.images %}
@@ -252,16 +252,16 @@
         appear on this page at all.
     -->
     <div>
-        <label class="block text-xs text-tron-border uppercase tracking-wide mb-3">&gt; Effect_Protocols</label>
+        <label class="block text-xs text-tron-dim uppercase tracking-wide mb-3">&gt; Effect_Protocols</label>
 
         <div class="mb-3">
-            <div class="text-xs text-tron-border/50 mb-2">// OFF</div>
+            <div class="text-xs text-tron-dim/75 mb-2">// OFF</div>
             <form hx-post="/devices/{{ device.device_id }}/effect"
                   hx-target="#device-{{ device.device_id }}" hx-swap="outerHTML" class="inline">
                 <input type="hidden" name="effect" value="none">
                 <button type="submit" class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
                     {% if device.effect == 'none' %}border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
-                    {% else %}border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
+                    {% else %}border-tron-border text-tron-dim hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
                     OFF
                 </button>
             </form>
@@ -283,7 +283,7 @@
                 OLD FIRMWARE{% if device.fw_version %} (v{{ device.fw_version }}){% endif %} —
                 only the built-in effects below will run on this strip.
             </div>
-            <div class="text-xs text-tron-border/70 mt-1">
+            <div class="text-xs text-tron-dim/75 mt-1">
                 The palette-based effects need the recipe engine. Update it under
                 Hardware_Config above to get them — but flash a strip you can
                 physically reach first: a bad image needs a USB cable.
@@ -299,7 +299,7 @@
                     <input type="hidden" name="effect" value="{{ eid }}">
                     <button type="submit" class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
                         {% if device.effect == eid %}border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
-                        {% else %}border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
+                        {% else %}border-tron-border text-tron-dim hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
                         {{ ename }}
                     </button>
                 </form>
@@ -311,7 +311,7 @@
         {% if supports_recipes %}
         {% for category, items in (effects_by_category | default({})).items() %}
         <div class="mb-3">
-            <div class="text-xs text-tron-border/50 mb-2">// {{ category | upper }}</div>
+            <div class="text-xs text-tron-dim/75 mb-2">// {{ category | upper }}</div>
             <div class="flex flex-wrap gap-2">
                 {% for e in items %}
                 <form hx-post="/devices/{{ device.device_id }}/recipe"
@@ -319,7 +319,7 @@
                     <input type="hidden" name="name" value="{{ e.name }}">
                     <button type="submit" class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
                         {% if device.effect == e.name %}border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
-                        {% else %}border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
+                        {% else %}border-tron-border text-tron-dim hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
                         {{ e.label }}
                     </button>
                 </form>
@@ -333,13 +333,13 @@
              pixels, so a pixel depends on its neighbours' previous values
              rather than on (position, time). It stays compiled. -->
         <div {% if not supports_recipes %}class="hidden"{% endif %}>
-            <div class="text-xs text-tron-border/50 mb-2">// COMPILED</div>
+            <div class="text-xs text-tron-dim/75 mb-2">// COMPILED</div>
             <form hx-post="/devices/{{ device.device_id }}/effect"
                   hx-target="#device-{{ device.device_id }}" hx-swap="outerHTML" class="inline">
                 <input type="hidden" name="effect" value="fire">
                 <button type="submit" class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
                     {% if device.effect == 'fire' %}border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
-                    {% else %}border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
+                    {% else %}border-tron-border text-tron-dim hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
                     FIRE
                 </button>
             </form>

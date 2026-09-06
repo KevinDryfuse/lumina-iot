@@ -7,11 +7,11 @@
   <div class="flex justify-between items-end mb-6 border-b border-tron-border pb-4">
     <div>
       <h1 class="text-2xl glow-subtle tracking-wide">EFFECT_STUDIO</h1>
-      <p class="text-xs text-tron-border mt-1">
+      <p class="text-xs text-tron-dim mt-1">
         Same maths as the strip, running in this browser. Tune here, push when it looks right.
       </p>
     </div>
-    <a href="/" class="text-xs text-tron-border hover:text-tron-cyan">[BACK]</a>
+    <a href="/" class="text-xs text-tron-dim hover:text-tron-cyan">[BACK]</a>
   </div>
 
   <!--
@@ -22,18 +22,18 @@
     ever authoring twenty palettes, which is the entire point of the engine.
   -->
   <div class="border border-tron-border bg-tron-panel/50 p-4 mb-6">
-    <div class="flex justify-between text-xs text-tron-border uppercase mb-2">
+    <div class="flex justify-between text-xs text-tron-dim uppercase mb-2">
       <span>&gt; Preview</span>
-      <span id="fps-readout" class="text-tron-border/50"></span>
+      <span id="fps-readout" class="text-tron-dim/75"></span>
     </div>
     <canvas id="strip" height="60" class="w-full block" style="image-rendering: pixelated;"></canvas>
     <div class="flex items-center gap-4 mt-3">
-      <label class="text-xs text-tron-border">
+      <label class="text-xs text-tron-dim">
         LEDs
         <input id="preview-count" type="number" value="91" min="1" max="300"
                class="w-20 ml-2 px-2 py-1 text-tron-cyan bg-transparent border border-tron-border">
       </label>
-      <span class="text-xs text-tron-border/50">
+      <span class="text-xs text-tron-dim/75">
         Position is normalised, so changing this should <em>not</em> change how the effect looks — only how finely it is drawn.
       </span>
     </div>
@@ -43,17 +43,17 @@
 
     <!-- Palette -->
     <div class="border border-tron-border bg-tron-panel/50 p-4">
-      <div class="text-xs text-tron-border uppercase mb-3">&gt; Palette</div>
+      <div class="text-xs text-tron-dim uppercase mb-3">&gt; Palette</div>
       <div id="palette-stops" class="flex flex-wrap gap-2 mb-3"></div>
       <div class="flex gap-2 flex-wrap items-center">
         <button onclick="addStop()" class="tron-btn px-3 py-1 border border-tron-border text-xs hover:border-tron-cyan hover:text-tron-cyan">[+ STOP]</button>
         <button onclick="removeStop()" class="tron-btn px-3 py-1 border border-tron-border text-xs hover:border-red-500 hover:text-red-400">[- STOP]</button>
-        <label class="text-xs text-tron-border ml-2">
+        <label class="text-xs text-tron-dim ml-2">
           Preview device colour
           <input id="device-color" type="color" value="#00f7ff" class="w-10 h-7 ml-1 align-middle bg-transparent border border-tron-border">
         </label>
       </div>
-      <p class="text-xs text-tron-border/50 mt-3">
+      <p class="text-xs text-tron-dim/75 mt-3">
         Circular — the last stop wraps to the first, so a scroll has no seam.
         <br>
         A stop set to <span class="text-tron-cyan">DEV</span> resolves on the strip
@@ -64,10 +64,10 @@
 
     <!-- Motion -->
     <div class="border border-tron-border bg-tron-panel/50 p-4">
-      <div class="text-xs text-tron-border uppercase mb-3">&gt; Motion</div>
+      <div class="text-xs text-tron-dim uppercase mb-3">&gt; Motion</div>
 
       <label class="block mb-3">
-        <span class="block text-xs text-tron-border uppercase mb-1">Sample_Mode <span class="normal-case text-tron-border/50">— which colour</span></span>
+        <span class="block text-xs text-tron-dim uppercase mb-1">Sample_Mode <span class="normal-case text-tron-dim/75">— which colour</span></span>
         <select id="s-mode" class="w-full px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
           <option value="fixed">fixed</option>
           <option value="position">position</option>
@@ -79,7 +79,7 @@
       <div id="s-params" class="grid grid-cols-2 gap-2 mb-4"></div>
 
       <label class="block mb-3">
-        <span class="block text-xs text-tron-border uppercase mb-1">Level_Mode <span class="normal-case text-tron-border/50">— how bright</span></span>
+        <span class="block text-xs text-tron-dim uppercase mb-1">Level_Mode <span class="normal-case text-tron-dim/75">— how bright</span></span>
         <select id="l-mode" class="w-full px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
           <option value="solid">solid</option>
           <option value="wave" selected>wave</option>
@@ -97,7 +97,7 @@
   <div class="border border-tron-border bg-tron-panel/50 p-4 mt-6">
     <div class="flex flex-wrap items-end gap-3 mb-4">
       <label class="block">
-        <span class="block text-xs text-tron-border uppercase mb-1">Push_To</span>
+        <span class="block text-xs text-tron-dim uppercase mb-1">Push_To</span>
         <select id="target" class="px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
           {% for d in devices %}
           <option value="{{ d.device_id }}">{{ (d.friendly_name or d.device_id) | upper }}</option>
@@ -107,7 +107,7 @@
       <button onclick="pushRecipe()" class="tron-btn px-4 py-2 border border-tron-cyan text-xs uppercase hover:bg-tron-cyan/10">[PUSH TO STRIP]</button>
 
       <label class="block ml-auto">
-        <span class="block text-xs text-tron-border uppercase mb-1">Save_As</span>
+        <span class="block text-xs text-tron-dim uppercase mb-1">Save_As</span>
         <input id="save-name" placeholder="my-effect" class="px-2 py-1 text-sm text-tron-cyan bg-transparent border border-tron-border">
       </label>
       <button onclick="saveRecipe()" class="tron-btn px-4 py-2 border border-tron-border text-xs uppercase hover:border-tron-cyan hover:text-tron-cyan">[SAVE]</button>
@@ -116,15 +116,15 @@
     <div id="status" class="text-xs mb-3"></div>
 
     <details>
-      <summary class="text-xs text-tron-border uppercase cursor-pointer hover:text-tron-cyan">&gt; JSON</summary>
+      <summary class="text-xs text-tron-dim uppercase cursor-pointer hover:text-tron-cyan">&gt; JSON</summary>
       <pre id="json-out" class="text-xs text-tron-cyan/70 mt-2 overflow-x-auto"></pre>
     </details>
   </div>
 
   <!-- Saved -->
   <div class="border border-tron-border bg-tron-panel/50 p-4 mt-6">
-    <div class="text-xs text-tron-border uppercase mb-3">&gt; Saved_Effects</div>
-    <div id="saved-list" class="flex flex-wrap gap-2"><span class="text-xs text-tron-border/50">loading...</span></div>
+    <div class="text-xs text-tron-dim uppercase mb-3">&gt; Saved_Effects</div>
+    <div id="saved-list" class="flex flex-wrap gap-2"><span class="text-xs text-tron-dim/75">loading...</span></div>
   </div>
 </div>
 
@@ -236,7 +236,7 @@ const PARAMS = {
 
 function paramBox(slot, name, def, lo, hi, step) {
   return `<label class="block">
-    <span class="block text-xs text-tron-border uppercase mb-1">${name}</span>
+    <span class="block text-xs text-tron-dim uppercase mb-1">${name}</span>
     <input type="number" data-slot="${slot}" data-name="${name}" value="${def}"
            min="${lo}" max="${hi}" step="${step}"
            class="w-full px-2 py-1 text-sm text-tron-cyan bg-transparent border border-tron-border">
@@ -260,7 +260,7 @@ function renderPalette() {
              class="w-14 h-10 cursor-pointer bg-transparent border border-tron-border ${dev ? 'opacity-30' : ''}">
       <button data-dev="${i}" class="px-1 text-xs border ${dev
           ? 'border-tron-cyan text-tron-cyan bg-tron-cyan/10'
-          : 'border-tron-border text-tron-border'}">DEV</button>
+          : 'border-tron-border text-tron-dim'}">DEV</button>
     </div>`;
   }).join('');
 
@@ -372,7 +372,7 @@ async function loadSaved() {
   const data = await res.json();
   const host = document.getElementById('saved-list');
   if (!data.effects || !data.effects.length) {
-    host.innerHTML = '<span class="text-xs text-tron-border/50">Nothing saved yet.</span>';
+    host.innerHTML = '<span class="text-xs text-tron-dim/75">Nothing saved yet.</span>';
     return;
   }
   host.innerHTML = data.effects.map(e =>
