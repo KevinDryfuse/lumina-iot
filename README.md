@@ -77,7 +77,14 @@ Eighteen built-ins are seeded into Postgres on start-up: the twelve that used to
 be compiled, translated into recipes, plus six theme palettes riding the same
 motions. Seeding is insert-only, so a recipe tuned by hand in the studio
 survives every redeploy; deleting the row restores the original on the next
-start.
+start. The dashboard's effect buttons are rendered from those rows rather than
+from a list in the template, so an effect saved in the studio appears on every
+device card without anything being edited.
+
+Five of them — breathing, chase, sparkle, cylon and strobe — used to render in
+whatever colour the strip was set to, which the first translation into data
+quietly lost. They use the palette stop `"device"`, resolved on the strip at
+render time, so they follow the colour picker again.
 
 `/studio` in the UI reimplements the device's render maths in JavaScript on a
 canvas. It exists because authoring an effect otherwise means change a number,
@@ -86,12 +93,11 @@ write the twenty palettes the engine exists to make cheap. Pushing a recipe to a
 strip and saving it under a name are separate buttons on purpose: an effect
 being tuned is not yet an effect worth keeping.
 
-Two things are worth knowing about where this has got to. The dashboard's effect
-buttons still send *names*, which run the compiled effects on the device and
-clear any loaded recipe; the seeded recipes are reached from the studio, or from
-`POST /devices/{id}/recipe?name=<effect>`. And fire stays compiled, because it
-diffuses heat between neighbouring pixels and so cannot be written as a function
-of position and time.
+Fire stays compiled, and has its own button, because it diffuses heat between
+neighbouring pixels: a pixel depends on its neighbours' previous values rather
+than on position and time alone, which is a genuinely different kind of effect.
+It and OFF are the only two buttons that still send an effect *name* rather than
+a recipe.
 
 ## Firmware updates
 

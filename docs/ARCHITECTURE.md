@@ -135,19 +135,38 @@ and they are different code paths.
 
 **A named effect** — `{"effect": "fire"}` — runs one of the thirteen functions
 compiled into the sketch. It clears any loaded recipe, deliberately: without
-that the recipe would keep rendering and the buttons would appear dead. The
-dashboard's effect buttons all take this path.
+that the recipe would keep rendering and the buttons would appear dead. Only two
+buttons on a device card still take this path, OFF and FIRE, the latter because
+fire cannot be expressed as a function of position and time.
 
 **A recipe** — `{"effect": "ocean", "recipe": {...}}` — is data, and runs
 through `runRecipe()`. The format is [RECIPES.md](RECIPES.md). It reaches a
-device either from the studio (`POST /studio/push/{id}`, which forwards to
-`POST /devices/{id}/recipe`) or by name from the stored set
-(`POST /devices/{id}/recipe?name=ocean`), which looks the row up in `effects`
-and sends its recipe verbatim.
+device either from the studio (`POST /studio/push/{id}`, which forwards the
+recipe being edited to `POST /devices/{id}/recipe`) or by name from the stored
+set (`POST /devices/{id}/recipe?name=ocean`), which looks the row up in
+`effects` and sends its recipe verbatim. Every other effect button on a device
+card is the second of those.
+
+The buttons themselves are rendered from the `effects` table, not from a list in
+the template. A template with its own list would be a third place that had to
+agree with the firmware and the server about which effects exist, and saving an
+effect in the studio would not have made it appear on the dashboard at all.
+`card_context()` in `ui/src/main.py` assembles that — and the firmware list, and
+the device — in one place, because eleven routes render the same partial and
+each assembling its own context is how the firmware list ended up on three of
+them and missing from the other eight.
 
 A recipe takes precedence over a compiled effect of the same name, so effects
 could be moved into data one at a time and compared side by side against what
 they replaced.
+
+A palette stop can also be the string `"device"`, resolved on the strip at
+render time to whatever colour it is currently set to. That is what lets the
+five effects which used to follow the colour picker — breathing, chase, sparkle,
+cylon, strobe — keep doing so as recipes. Because it resolves per frame rather
+than at parse time, a colour change reaches a running recipe without anything
+being re-sent, which is why `processCommand()` only pushes a solid colour out
+when no recipe is loaded.
 
 Both kinds persist. The device writes the effect name — and, for a recipe, the
 raw JSON exactly as it arrived rather than unpacked fields — into NVS, so a

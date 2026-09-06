@@ -33,6 +33,7 @@
 #include <FastLED.h>
 #include <Preferences.h>
 #include <HTTPUpdate.h>
+#include <esp_ota_ops.h>
 #include "secrets.h"
 
 // ===================
@@ -40,7 +41,7 @@
 // ===================
 // Bump on every build that gets published for OTA. Reported in the announce
 // payload, which is how the server knows which strips are behind.
-#define FW_VERSION 6
+#define FW_VERSION 7
 
 // ===================
 // LED Configuration - runtime, not compile time
@@ -101,6 +102,55 @@ struct Recipe {
 
 Recipe g_recipe;
 bool   g_haveRecipe = false;
+
+/*
+ * REAL OTA ROLLBACK.
+ *
+ * The ESP32 bootloader supports it and the Arduino core compiles it in
+ * (CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y), but by default it is useless here:
+ * initArduino() sees the image is PENDING_VERIFY and immediately calls
+ * esp_ota_mark_app_valid_cancel_rollback() - BEFORE setup() runs. The image is
+ * declared good before a single line of this file has executed, so a crash in
+ * setup() or loop() just loops forever.
+ *
+ * verifyRollbackLater() is a weak symbol the core provides precisely so an
+ * application can take that decision back. Returning true defers it, and the
+ * image stays PENDING_VERIFY until confirmOta() below says otherwise. If it
+ * never does - because the new firmware crashes, or cannot bring up the LEDs,
+ * or cannot reach the network - the bootloader reverts to the previous image on
+ * the next boot, with no cable involved.
+ *
+ * That is the difference between "the desk strip is the bench" being a rule
+ * everyone has to remember and the hardware enforcing it.
+ */
+bool verifyRollbackLater() { return true; }
+
+bool     g_otaConfirmed = false;
+uint32_t g_bootMs = 0;
+
+/*
+ * What counts as proof.
+ *
+ * MQTT being up means WiFi came up, the LEDs initialised, NVS was readable and
+ * the broker answered - very nearly everything that could be broken by a bad
+ * build. The timeout is the escape hatch for the other case: if the BROKER is
+ * down, that is not this firmware's fault, and rolling back over someone else's
+ * outage would be its own bug.
+ */
+#define OTA_CONFIRM_TIMEOUT_MS 120000
+
+void confirmOta() {
+  if (g_otaConfirmed) return;
+
+  const esp_partition_t *running = esp_ota_get_running_partition();
+  esp_ota_img_states_t st;
+  if (esp_ota_get_state_partition(running, &st) == ESP_OK &&
+      st == ESP_OTA_IMG_PENDING_VERIFY) {
+    esp_ota_mark_app_valid_cancel_rollback();
+    Serial.println("OTA image confirmed good - rollback cancelled");
+  }
+  g_otaConfirmed = true;
+}
 
 /* Per-LED state for the impulse mode. Sparkle and confetti have to remember
  * which pixels are lit and how far they have faded; everything else in the
@@ -719,11 +769,13 @@ void runEffect() {
 /*
  * Triggered by MQTT: {"ota": "http://192.168.1.55:8080/fw/led_controller_3.bin"}
  *
- * The ESP32's default 4 MB partition table already carries two app slots, so
- * there is nothing to configure: the new image is written to the slot that is
- * not running, and the bootloader switches over on reset. A download that
- * fails, or an image that will not boot, leaves the current firmware exactly
- * where it was.
+ * The new image is written to the app slot that is not running, and the
+ * bootloader switches over on reset.
+ *
+ * A download that fails leaves the current firmware untouched, because nothing
+ * has been switched. An image that DOES install but then misbehaves is covered
+ * separately, by the deferred rollback at the top of this file - the image stays
+ * on probation until it has reached the broker or simply survived two minutes.
  *
  * The strip is the progress bar. These controllers are mounted in places where
  * a serial cable is not a realistic way to find out whether an update is
@@ -1089,6 +1141,7 @@ void connectMqtt() {
       Serial.println(TOPIC_SET);
       announceDevice();
       flashGreen();
+      confirmOta();
     } else {
       Serial.print(" failed (rc=");
       Serial.print(mqtt.state());
@@ -1109,6 +1162,7 @@ void connectMqtt() {
 // ===================
 void setup() {
   Serial.begin(115200);
+  g_bootMs = millis();
   delay(1000);
 
   // Generate device ID from chip ID
@@ -1186,6 +1240,10 @@ void loop() {
     connectMqtt();
   }
   mqtt.loop();
+
+  /* The broker being unreachable is not this firmware's fault, so surviving
+   * long enough also counts as proof. See confirmOta(). */
+  if (!g_otaConfirmed && millis() - g_bootMs > OTA_CONFIRM_TIMEOUT_MS) confirmOta();
 
   /* Deferred from the MQTT callback - see pendingOta. Cleared before the call,
    * so a request that somehow fails catastrophically is not retried forever. */

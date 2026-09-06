@@ -208,10 +208,15 @@
         <!--
             Firmware over the air.
 
-            The desk strip is the bench: an image that boots into a crash loop
-            stays there, because Arduino's ESP32 core does not enable the
-            bootloader's rollback. Prove a build here before sending it anywhere
-            that needs a ladder.
+            From firmware v7 the strip rolls itself back: a new image stays on
+            probation until it has reached the broker or survived two minutes,
+            and the bootloader reverts to the previous one if it does neither.
+
+            Before v7 it did not, whatever the comment here used to claim. The
+            core compiles rollback in, but marks the image valid before setup()
+            runs, so a crash afterwards looped forever. The desk strip is still
+            the right place to prove a build - rollback catches a crash, not an
+            effect that merely looks wrong.
         -->
         {% if firmware and firmware.images %}
         <form

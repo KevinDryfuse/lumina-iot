@@ -45,6 +45,20 @@ the others, and in `docs/RECIPES.md`. The studio's JS is deliberately a
 structural mirror of `runRecipe()` rather than idiomatic JavaScript, because its
 whole value is that a number behaves the same in the browser as on the wall.
 
+**No component keeps its own list of effects.** The device cards render their
+buttons from the `effects` table, through `card_context()` in `ui/src/main.py`.
+A list in a template would be a third place that had to agree with the firmware
+and the server about which effects exist, and an effect saved in the studio
+would not appear on the dashboard at all. The MCP server still has one, and is
+wrong for the same reason.
+
+**FastAPI and Starlette carry upper bounds, on purpose.** Every dependency was
+once an unbounded `>=`, and an image rebuild done for unrelated reasons pulled
+Starlette 1.x, whose `TemplateResponse` takes the request first. Every page
+returned 500, and the error surfaced inside Jinja's template cache as
+"unhashable type: dict", naming neither the argument nor the file. Use
+`TemplateResponse(request, name, context)`, and do not loosen the pins.
+
 **Effect seeding is insert-only.** Built-ins are inserted if missing and never
 updated, so that a recipe hand-tuned in the studio survives a redeploy. If you
 change a seeded recipe, existing installs keep the old one until someone deletes
