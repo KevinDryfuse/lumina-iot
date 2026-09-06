@@ -95,11 +95,21 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
     devices = await api_client.get_all_devices()
 
+    # dashboard.html {% include %}s the device card, so it needs everything the
+    # card needs. Adding effects_by_category to card_context() alone was not
+    # enough and took the whole site down: the include inherits the DASHBOARD's
+    # context, not the card routes'.
+    effects = (await api_client.list_effects()).get("effects", [])
+    grouped: dict[str, list] = {}
+    for e in effects:
+        grouped.setdefault(e.get("category") or "custom", []).append(e)
+
     return templates.TemplateResponse(request, "dashboard.html",
         {
             "request": request,
             "user": user,
             "devices": devices,
+            "effects_by_category": grouped,
             "firmware": await api_client.list_firmware(),
         },
     )

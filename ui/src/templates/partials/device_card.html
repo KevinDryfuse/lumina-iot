@@ -267,7 +267,49 @@
             </form>
         </div>
 
-        {% for category, items in effects_by_category.items() %}
+        {#
+            A strip running firmware older than the recipe engine will ACCEPT a
+            recipe effect's name, do nothing with it, and report the name back -
+            so the button lights up as though it worked and the strip carries on
+            doing whatever it was doing. Silently. Tested on the wall strip.
+
+            So old firmware is offered only what it can actually run.
+        #}
+        {% set supports_recipes = device.fw_version is not none and device.fw_version >= 5 %}
+
+        {% if not supports_recipes %}
+        <div class="mb-3 border border-yellow-600/40 bg-yellow-900/10 p-3">
+            <div class="text-xs text-yellow-500/90">
+                OLD FIRMWARE{% if device.fw_version %} (v{{ device.fw_version }}){% endif %} —
+                only the built-in effects below will run on this strip.
+            </div>
+            <div class="text-xs text-tron-border/70 mt-1">
+                The palette-based effects need the recipe engine. Update it under
+                Hardware_Config above to get them — but flash a strip you can
+                physically reach first: a bad image needs a USB cable.
+            </div>
+            <div class="flex flex-wrap gap-2 mt-3">
+                {% for eid, ename in [("rainbow","RAINBOW"),("breathing","PULSE"),("chase","CHASE"),
+                                      ("sparkle","SPARKLE"),("fire","FIRE"),("confetti","CONFETTI"),
+                                      ("cylon","CYLON"),("strobe","STROBE"),("ocean","OCEAN"),
+                                      ("aurora","AURORA"),("candle","CANDLE"),("christmas","XMAS"),
+                                      ("usa","USA")] %}
+                <form hx-post="/devices/{{ device.device_id }}/effect"
+                      hx-target="#device-{{ device.device_id }}" hx-swap="outerHTML" class="inline">
+                    <input type="hidden" name="effect" value="{{ eid }}">
+                    <button type="submit" class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
+                        {% if device.effect == eid %}border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
+                        {% else %}border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
+                        {{ ename }}
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if supports_recipes %}
+        {% for category, items in (effects_by_category | default({})).items() %}
         <div class="mb-3">
             <div class="text-xs text-tron-border/50 mb-2">// {{ category | upper }}</div>
             <div class="flex flex-wrap gap-2">
@@ -285,11 +327,12 @@
             </div>
         </div>
         {% endfor %}
+        {% endif %}
 
         <!-- Fire cannot be a recipe: it diffuses heat between neighbouring
              pixels, so a pixel depends on its neighbours' previous values
              rather than on (position, time). It stays compiled. -->
-        <div>
+        <div {% if not supports_recipes %}class="hidden"{% endif %}>
             <div class="text-xs text-tron-border/50 mb-2">// COMPILED</div>
             <form hx-post="/devices/{{ device.device_id }}/effect"
                   hx-target="#device-{{ device.device_id }}" hx-swap="outerHTML" class="inline">
