@@ -45,7 +45,7 @@ async def login_page(request: Request):
     user = get_current_user(request, next(get_db()))
     if user:
         return RedirectResponse(url="/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html", {"request": request})
 
 
 @app.post("/login")
@@ -58,8 +58,7 @@ async def login(
     """Handle login form submission."""
     user = authenticate_user(db, username, password)
     if not user:
-        return templates.TemplateResponse(
-            "login.html",
+        return templates.TemplateResponse(request, "login.html",
             {"request": request, "error": "Invalid username or password"},
             status_code=401,
         )
@@ -96,8 +95,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
     devices = await api_client.get_all_devices()
 
-    return templates.TemplateResponse(
-        "dashboard.html",
+    return templates.TemplateResponse(request, "dashboard.html",
         {
             "request": request,
             "user": user,
@@ -120,8 +118,7 @@ async def studio(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    return templates.TemplateResponse(
-        "studio.html",
+    return templates.TemplateResponse(request, "studio.html",
         {"request": request, "user": user,
          "devices": await api_client.get_all_devices()},
     )
@@ -156,8 +153,7 @@ async def get_device_card(
 ):
     """Get a single device card (for HTMX refresh)."""
     device = await api_client.get_device(device_id)
-    return templates.TemplateResponse(
-        "partials/device_card.html",
+    return templates.TemplateResponse(request, "partials/device_card.html",
         {"request": request, "device": device,
          "firmware": await api_client.list_firmware()},
     )
@@ -178,8 +174,7 @@ async def set_color(
 
     device = await api_client.set_color(device_id, r, g, b)
 
-    return templates.TemplateResponse(
-        "partials/device_card.html",
+    return templates.TemplateResponse(request, "partials/device_card.html",
         {
             "request": request,
             "device": device,
@@ -204,8 +199,7 @@ async def set_settings(
 
     device = await api_client.set_settings(device_id, r, g, b, brightness)
 
-    return templates.TemplateResponse(
-        "partials/device_card.html",
+    return templates.TemplateResponse(request, "partials/device_card.html",
         {
             "request": request,
             "device": device,
@@ -224,8 +218,7 @@ async def set_effect(
     """Set device effect."""
     device = await api_client.set_effect(device_id, effect)
 
-    return templates.TemplateResponse(
-        "partials/device_card.html",
+    return templates.TemplateResponse(request, "partials/device_card.html",
         {
             "request": request,
             "device": device,
@@ -245,8 +238,7 @@ async def set_power(
     power_on = power == "on"
     device = await api_client.set_power(device_id, power_on)
 
-    return templates.TemplateResponse(
-        "partials/device_card.html",
+    return templates.TemplateResponse(request, "partials/device_card.html",
         {
             "request": request,
             "device": device,
@@ -274,8 +266,7 @@ async def set_device_config(
     await api_client.set_config(device_id, led_count, pin, led_type, order)
     device = await api_client.get_device(device_id)
 
-    return templates.TemplateResponse(
-        "partials/device_card.html",
+    return templates.TemplateResponse(request, "partials/device_card.html",
         {
             "request": request,
             "device": device,
@@ -296,8 +287,7 @@ async def start_ota(
     await api_client.send_ota(device_id, file)
     device = await api_client.get_device(device_id)
 
-    return templates.TemplateResponse(
-        "partials/device_card.html",
+    return templates.TemplateResponse(request, "partials/device_card.html",
         {
             "request": request,
             "device": device,
@@ -317,8 +307,7 @@ async def set_device_name(
     """Set device friendly name."""
     device = await api_client.set_name(device_id, friendly_name)
 
-    return templates.TemplateResponse(
-        "partials/device_card.html",
+    return templates.TemplateResponse(request, "partials/device_card.html",
         {
             "request": request,
             "device": device,

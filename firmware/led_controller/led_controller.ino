@@ -40,7 +40,7 @@
 // ===================
 // Bump on every build that gets published for OTA. Reported in the announce
 // payload, which is how the server knows which strips are behind.
-#define FW_VERSION 5
+#define FW_VERSION 6
 
 // ===================
 // LED Configuration - runtime, not compile time
@@ -75,6 +75,17 @@ enum LevelMode  { L_SOLID, L_WAVE, L_BLOB, L_IMPULSE, L_SQUARE, L_FLICKER };
 
 struct Recipe {
   CRGB    pal[MAX_PALETTE];
+  /*
+   * A stop written as the string "device" rather than an [r,g,b] triple means
+   * "whatever colour this device is set to".
+   *
+   * Without it, moving an effect into data cost it a feature: chase, cylon,
+   * sparkle, breathing and strobe all used to render in the colour you had
+   * picked, and a recipe carries its own fixed palette. Now a recipe can defer
+   * that decision to the device, and it composes - ["device", [0,0,0]] is a
+   * gradient from your colour down to black.
+   */
+  bool    palIsDevice[MAX_PALETTE] = {false};
   uint8_t palN = 0;
 
   SampleMode sMode = S_FIXED;
@@ -321,15 +332,20 @@ static inline float frac01(float x) { return x - floorf(x); }
 
 /* Palette lookup, wrapping. Circular so a scrolling palette loops without a
  * seam - a linear ramp would jump from the last stop back to the first. */
+static inline CRGB palStop(int i) {
+  return g_recipe.palIsDevice[i] ? CRGB(currentR, currentG, currentB)
+                                 : g_recipe.pal[i];
+}
+
 CRGB paletteLookup(float x) {
   if (g_recipe.palN == 0) return CRGB::Black;
-  if (g_recipe.palN == 1) return g_recipe.pal[0];
+  if (g_recipe.palN == 1) return palStop(0);
 
   float f = frac01(x) * g_recipe.palN;
   int   i = (int)f;
   float m = f - i;
-  const CRGB &a = g_recipe.pal[i % g_recipe.palN];
-  const CRGB &b = g_recipe.pal[(i + 1) % g_recipe.palN];
+  const CRGB a = palStop(i % g_recipe.palN);
+  const CRGB b = palStop((i + 1) % g_recipe.palN);
   return CRGB(a.r + (int)((b.r - a.r) * m),
               a.g + (int)((b.g - a.g) * m),
               a.b + (int)((b.b - a.b) * m));
@@ -436,10 +452,21 @@ bool parseRecipe(JsonObject j) {
     Serial.println("recipe: no palette");
     return false;
   }
-  for (JsonArray stop : pal) {
+  for (JsonVariant stop : pal) {
     if (r.palN >= MAX_PALETTE) break;
-    if (stop.size() < 3) continue;
-    r.pal[r.palN++] = CRGB(stop[0].as<int>(), stop[1].as<int>(), stop[2].as<int>());
+    if (stop.is<const char*>()) {
+      /* "device" - resolved at render time, not here, so that changing the
+       * colour takes effect without re-sending the recipe. */
+      if (!strcmp(stop.as<const char*>(), "device")) {
+        r.palIsDevice[r.palN] = true;
+        r.pal[r.palN++] = CRGB::White;    /* only used if the string is wrong */
+      }
+      continue;
+    }
+    JsonArray c = stop.as<JsonArray>();
+    if (c.isNull() || c.size() < 3) continue;
+    r.palIsDevice[r.palN] = false;
+    r.pal[r.palN++] = CRGB(c[0].as<int>(), c[1].as<int>(), c[2].as<int>());
   }
   if (r.palN == 0) return false;
 
@@ -895,7 +922,9 @@ void processCommand(String message) {
     Serial.print(currentB);
     Serial.println(")");
 
-    updateLeds();
+    /* A recipe with a "device" stop reads currentR/G/B every frame, so it picks
+     * this up on its own. Only a solid colour needs pushing out here. */
+    if (!g_haveRecipe) updateLeds();
   }
 
   // Handle brightness command

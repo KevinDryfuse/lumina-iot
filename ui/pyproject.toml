@@ -3,8 +3,15 @@ name = "lumina-ui"
 version = "0.1.0"
 description = "UI service for Lumina IoT LED controller"
 requires-python = ">=3.11"
+# Version policy: FastAPI and Starlette carry upper bounds deliberately.
+# Every dependency here was an unbounded ">=", so rebuilding an image - something
+# done for reasons that have nothing to do with dependencies - silently pulled
+# Starlette 1.x, whose TemplateResponse takes the request first. Every page in
+# the UI broke at once, and the error surfaced inside Jinja's template cache as
+# "unhashable type: dict", naming neither the argument nor the file.
 dependencies = [
-    "fastapi>=0.115.0",
+    "fastapi>=0.115.0,<0.200.0",
+    "starlette<1.0",
     "uvicorn>=0.30.0",
     "httpx>=0.27.0",
     "sqlalchemy>=2.0.0",
