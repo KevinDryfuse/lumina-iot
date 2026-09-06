@@ -45,12 +45,20 @@
     <div class="border border-tron-border bg-tron-panel/50 p-4">
       <div class="text-xs text-tron-border uppercase mb-3">&gt; Palette</div>
       <div id="palette-stops" class="flex flex-wrap gap-2 mb-3"></div>
-      <div class="flex gap-2">
+      <div class="flex gap-2 flex-wrap items-center">
         <button onclick="addStop()" class="tron-btn px-3 py-1 border border-tron-border text-xs hover:border-tron-cyan hover:text-tron-cyan">[+ STOP]</button>
         <button onclick="removeStop()" class="tron-btn px-3 py-1 border border-tron-border text-xs hover:border-red-500 hover:text-red-400">[- STOP]</button>
+        <label class="text-xs text-tron-border ml-2">
+          Preview device colour
+          <input id="device-color" type="color" value="#00f7ff" class="w-10 h-7 ml-1 align-middle bg-transparent border border-tron-border">
+        </label>
       </div>
       <p class="text-xs text-tron-border/50 mt-3">
         Circular — the last stop wraps to the first, so a scroll has no seam.
+        <br>
+        A stop set to <span class="text-tron-cyan">DEV</span> resolves on the strip
+        to whatever colour that strip is set to, so an effect can still follow the
+        colour picker. The swatch above only stands in for it here.
       </p>
     </div>
 
@@ -151,12 +159,18 @@ function smoothNoise(x, y) {
 
 const frac01 = x => x - Math.floor(x);
 
+// A stop is either [r,g,b] or the string "device", resolved on the strip to
+// whatever colour it is set to. Here it stands in as the picker above.
+function stopRgb(stop) {
+  return stop === 'device' ? hexToRgb(document.getElementById('device-color').value) : stop;
+}
+
 function paletteLookup(pal, x) {
   if (!pal.length) return [0, 0, 0];
-  if (pal.length === 1) return pal[0];
+  if (pal.length === 1) return stopRgb(pal[0]);
   const f = frac01(x) * pal.length;
   const i = Math.floor(f), m = f - i;
-  const a = pal[i % pal.length], b = pal[(i + 1) % pal.length];
+  const a = stopRgb(pal[i % pal.length]), b = stopRgb(pal[(i + 1) % pal.length]);
   return [a[0] + (b[0] - a[0]) * m, a[1] + (b[1] - a[1]) * m, a[2] + (b[2] - a[2]) * m];
 }
 
@@ -238,13 +252,29 @@ function renderParams(slot) {
 }
 
 function renderPalette() {
-  document.getElementById('palette-stops').innerHTML = palette.map((c, i) =>
-    `<input type="color" data-stop="${i}" value="${rgbToHex(c)}" class="w-14 h-10 cursor-pointer bg-transparent border border-tron-border">`
-  ).join('');
+  document.getElementById('palette-stops').innerHTML = palette.map((c, i) => {
+    const dev = c === 'device';
+    return `<div class="flex flex-col items-center gap-1">
+      <input type="color" data-stop="${i}" value="${rgbToHex(dev ? [255,255,255] : c)}"
+             ${dev ? 'disabled' : ''}
+             class="w-14 h-10 cursor-pointer bg-transparent border border-tron-border ${dev ? 'opacity-30' : ''}">
+      <button data-dev="${i}" class="px-1 text-xs border ${dev
+          ? 'border-tron-cyan text-tron-cyan bg-tron-cyan/10'
+          : 'border-tron-border text-tron-border'}">DEV</button>
+    </div>`;
+  }).join('');
+
   document.querySelectorAll('[data-stop]').forEach(inp => {
     inp.addEventListener('input', e => {
       palette[+e.target.dataset.stop] = hexToRgb(e.target.value);
       emitJson();
+    });
+  });
+  document.querySelectorAll('[data-dev]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const i = +e.target.dataset.dev;
+      palette[i] = palette[i] === 'device' ? [255, 255, 255] : 'device';
+      renderPalette();
     });
   });
   emitJson();
@@ -256,7 +286,7 @@ const addStop = () => { if (palette.length < 8) { palette.push([255,255,255]); r
 const removeStop = () => { if (palette.length > 1) { palette.pop(); renderPalette(); } };
 
 function currentRecipe() {
-  const r = { palette: palette.map(c => c.map(Math.round)),
+  const r = { palette: palette.map(c => c === 'device' ? 'device' : c.map(Math.round)),
               sample: { mode: document.getElementById('s-mode').value },
               level:  { mode: document.getElementById('l-mode').value },
               frame_ms: 20 };
@@ -353,7 +383,7 @@ async function loadSaved() {
 
 function loadEffect(json) {
   const r = JSON.parse(json);
-  palette = r.palette.map(c => c.slice());
+  palette = r.palette.map(c => c === 'device' ? 'device' : c.slice());
   document.getElementById('s-mode').value = r.sample?.mode || 'fixed';
   document.getElementById('l-mode').value = r.level?.mode || 'solid';
   renderParams('sample'); renderParams('level'); renderPalette();

@@ -74,7 +74,7 @@ strip that reboots at 3am comes back as itself without waiting for the server.
 
 | Field | Meaning |
 |---|---|
-| `palette` | 1–8 `[r, g, b]` stops. Interpolated, and **circular** — the last stop wraps back to the first so a scroll has no seam |
+| `palette` | 1–8 stops, each `[r, g, b]` or the string `"device"`. Interpolated, and **circular** — the last stop wraps back to the first so a scroll has no seam |
 | `sample` | Where in the palette each LED reads |
 | `level` | How bright each LED is, 0–1 |
 | `frame_ms` | Frame interval, 5–500, default 20 |
@@ -99,6 +99,25 @@ strip that reboots at 3am comes back as itself without waiting for the server.
 | `impulse` | `min`, `max`, `rate`, `decay` | Random pixels struck and faded. Sparkle, Confetti |
 | `square` | `min`, `max`, `speed` | On/off. Strobe |
 | `flicker` | `min`, `max` | Per-LED random each frame. Candle |
+
+### The `"device"` stop
+
+A palette stop written as the string `"device"` resolves, on the strip, to
+whatever colour that strip is currently set to.
+
+```json
+{ "palette": ["device"], "sample": {"mode": "fixed"},
+  "level": {"mode": "blob", "speed": 0.4, "width": 0.02, "pingpong": true} }
+```
+
+This exists because moving an effect into data cost it a feature. Chase, cylon,
+sparkle, breathing and strobe all used to render in the colour you had picked,
+and a recipe carries its own fixed palette — so the first translation of them
+silently stopped following the colour picker.
+
+It is resolved at render time rather than when the recipe is parsed, so changing
+the colour takes effect immediately without re-sending anything. And it
+composes: `["device", [0,0,0]]` is a gradient from your colour down to black.
 
 ### `detune` is not optional decoration
 

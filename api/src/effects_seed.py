@@ -9,14 +9,12 @@ Seeded on start-up and INSERTED ONLY IF MISSING. Never updated in place: once
 one of these has been tuned by hand in the studio, a redeploy must not quietly
 undo that. Delete a row to get the original back.
 
-Two honest gaps, both worth knowing before comparing these against the
-originals:
+Breathing, chase, sparkle, cylon and strobe use the palette stop "device",
+which resolves at render time to whatever colour the strip is set to - so they
+behave as they did when they were compiled, and still follow the colour picker.
 
-  - The compiled breathing, chase, sparkle, cylon and strobe rendered in
-    whatever colour the device was set to. A recipe carries its own palette and
-    has no way to say "use the device's current colour", so these carry fixed
-    palettes instead. That is a real loss of function and the obvious next
-    addition to the format - a palette stop meaning "device colour".
+One honest gap remains, worth knowing before comparing these against the
+originals:
 
   - Rainbow and christmas were written against raw LED indices (hue += 7 per
     LED, alternate every other pixel), so they looked different on strips of
@@ -46,7 +44,7 @@ BUILTIN = {
     "breathing": {
         "label": "PULSE", "category": "standard",
         "recipe": {
-            "palette": [[255, 190, 120]],
+            "palette": ["device"],
             "sample": {"mode": "fixed"},
             # beatsin8(12, 20, 255) - 12 BPM is 0.2 Hz, floor 20/255.
             "level": {"mode": "wave", "min": 0.08, "max": 1.0, "speed": 0.2},
@@ -56,7 +54,7 @@ BUILTIN = {
     "chase": {
         "label": "CHASE", "category": "standard",
         "recipe": {
-            "palette": [[0, 247, 255]],
+            "palette": ["device"],
             "sample": {"mode": "fixed"},
             # fadeToBlackBy(40) per frame is roughly a quarter-strip tail.
             "level": {"mode": "blob", "min": 0, "max": 1.0, "speed": 0.5,
@@ -67,7 +65,7 @@ BUILTIN = {
     "sparkle": {
         "label": "SPARKLE", "category": "standard",
         "recipe": {
-            "palette": [[255, 255, 255]],
+            "palette": ["device"],
             "sample": {"mode": "fixed"},
             # random8() < 80 is a 0.31 strike rate; fadeToBlackBy(20) is 0.92.
             "level": {"mode": "impulse", "min": 0, "max": 1.0,
@@ -88,7 +86,7 @@ BUILTIN = {
     "cylon": {
         "label": "CYLON", "category": "party",
         "recipe": {
-            "palette": [[255, 0, 0]],
+            "palette": ["device"],
             "sample": {"mode": "fixed"},
             "level": {"mode": "blob", "min": 0, "max": 1.0, "speed": 0.4,
                       "width": 0.02, "trail": 0.25, "pingpong": True},
@@ -98,7 +96,7 @@ BUILTIN = {
     "strobe": {
         "label": "STROBE", "category": "party",
         "recipe": {
-            "palette": [[255, 255, 255]],
+            "palette": ["device"],
             "sample": {"mode": "fixed"},
             # Toggled every 80ms in the original: 6.25 Hz.
             "level": {"mode": "square", "min": 0, "max": 1.0, "speed": 6.25},
