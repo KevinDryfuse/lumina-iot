@@ -181,6 +181,200 @@ BUILTIN = {
         },
     },
 
+    # ---- ambient: slow, flowing, meant for a dark room ----
+    #
+    # Deliberately dimmer than the themes below. These are for a room lit by
+    # monitors, where a strip at full brightness stops being ambient and starts
+    # being a lamp. The brightness ceilings sit well under 1.0 on purpose; the
+    # strip's own brightness control still scales on top of that.
+    "nebula": {
+        "label": "NEBULA", "category": "ambient",
+        "recipe": {
+            "palette": [[16, 0, 48], [70, 0, 130], [160, 40, 200],
+                        [40, 0, 100], [8, 0, 32]],
+            "sample": {"mode": "noise", "scale": 2.2, "speed": 0.06},
+            "level": {"mode": "wave", "min": 0.25, "max": 0.85,
+                      "speed": 0.12, "phase": 1.6, "detune": 1.3},
+            "frame_ms": 30,
+        },
+    },
+    "cryo": {
+        "label": "CRYO", "category": "ambient",
+        "recipe": {
+            "palette": [[0, 30, 70], [70, 150, 210], [190, 230, 255], [20, 80, 140]],
+            "sample": {"mode": "noise", "scale": 1.6, "speed": 0.05},
+            "level": {"mode": "wave", "min": 0.3, "max": 0.9,
+                      "speed": 0.1, "phase": 1.0, "detune": 0.9},
+            "frame_ms": 30,
+        },
+    },
+    "abyss": {
+        "label": "ABYSS", "category": "ambient",
+        "recipe": {
+            # Bioluminescence: mostly near-black, with slow teal blooms.
+            "palette": [[0, 6, 16], [0, 55, 75], [0, 170, 150], [0, 25, 45]],
+            "sample": {"mode": "noise", "scale": 2.8, "speed": 0.04},
+            "level": {"mode": "wave", "min": 0.12, "max": 0.8,
+                      "speed": 0.09, "phase": 2.2, "detune": 1.5},
+            "frame_ms": 35,
+        },
+    },
+    "nightshift": {
+        "label": "NIGHTSHIFT", "category": "ambient",
+        "recipe": {
+            # Warm, very dim, no blue at all. For working late without wrecking
+            # your eyes - the ceiling of 0.45 is the entire point of this one.
+            "palette": [[60, 20, 0], [120, 50, 8], [80, 30, 4]],
+            "sample": {"mode": "noise", "scale": 1.2, "speed": 0.03},
+            "level": {"mode": "wave", "min": 0.22, "max": 0.45,
+                      "speed": 0.06, "phase": 0.7, "detune": 0.8},
+            "frame_ms": 40,
+        },
+    },
+    "ember": {
+        "label": "EMBER", "category": "ambient",
+        "recipe": {
+            # The colours of fire without its physics: a slow glow rather than a
+            # flicker, so it reads as coals rather than flames.
+            "palette": [[35, 0, 0], [130, 22, 0], [210, 65, 0], [70, 8, 0]],
+            "sample": {"mode": "noise", "scale": 2.0, "speed": 0.07},
+            "level": {"mode": "wave", "min": 0.18, "max": 0.7,
+                      "speed": 0.15, "phase": 1.2, "detune": 1.4},
+            "frame_ms": 30,
+        },
+    },
+
+    # ---- sci-fi: harder edges and more motion, for a room full of screens ----
+    "tron": {
+        "label": "TRON", "category": "scifi",
+        "recipe": {
+            # Repeated stops give hard bands instead of a gradient. The look
+            # depends on that edge staying sharp.
+            "palette": [[0, 8, 16], [0, 8, 16], [0, 247, 255], [0, 247, 255]],
+            "sample": {"mode": "scroll", "span": 4.0, "speed": 0.22},
+            "level": {"mode": "solid", "max": 0.8},
+            "frame_ms": 20,
+        },
+    },
+    "reactor": {
+        "label": "REACTOR", "category": "scifi",
+        "recipe": {
+            # Low detune on purpose. This one should pulse in UNISON, like
+            # something powering up, where aurora should shimmer out of step.
+            # Same parameter, opposite intent.
+            "palette": [[0, 16, 24], [0, 110, 125], [70, 250, 225], [0, 80, 100]],
+            "sample": {"mode": "scroll", "span": 1.5, "speed": 0.04},
+            "level": {"mode": "wave", "min": 0.2, "max": 0.95,
+                      "speed": 0.28, "phase": 0.6, "detune": 0.3},
+            "frame_ms": 25,
+        },
+    },
+    "synthwave": {
+        "label": "SYNTHWAVE", "category": "scifi",
+        "recipe": {
+            "palette": [[255, 0, 130], [110, 0, 210], [0, 190, 255], [55, 0, 110]],
+            "sample": {"mode": "scroll", "span": 2.0, "speed": 0.08},
+            "level": {"mode": "wave", "min": 0.35, "max": 0.95,
+                      "speed": 0.2, "phase": 1.4, "detune": 1.0},
+            "frame_ms": 25,
+        },
+    },
+    "datastream": {
+        "label": "DATASTREAM", "category": "scifi",
+        "recipe": {
+            "palette": [[0, 16, 8], [0, 255, 110], [0, 55, 35], [0, 8, 4]],
+            "sample": {"mode": "scroll", "span": 3.0, "speed": 0.55},
+            "level": {"mode": "wave", "min": 0.25, "max": 0.9,
+                      "speed": 1.1, "phase": 4.0, "detune": 1.8},
+            "frame_ms": 20,
+        },
+    },
+    "sonar": {
+        "label": "SONAR", "category": "scifi",
+        "recipe": {
+            # One sweep, one direction, long tail. pingpong false so it always
+            # travels the same way: a scan, not a pendulum.
+            "palette": [[0, 255, 180]],
+            "sample": {"mode": "fixed"},
+            "level": {"mode": "blob", "min": 0.02, "max": 0.85, "speed": 0.15,
+                      "width": 0.015, "trail": 0.5, "pingpong": False},
+            "frame_ms": 20,
+        },
+    },
+    "starfield": {
+        "label": "STARFIELD", "category": "scifi",
+        "recipe": {
+            "palette": [[255, 255, 255], [170, 195, 255], [255, 235, 195]],
+            "sample": {"mode": "random"},
+            "level": {"mode": "impulse", "min": 0.0, "max": 0.85,
+                      "rate": 0.22, "decay": 0.9},
+            "frame_ms": 30,
+        },
+    },
+
+    # ---- the rest of the calendar ----
+    "halloween": {
+        "label": "HALLOWEEN", "category": "holiday",
+        "recipe": {
+            "palette": [[255, 70, 0], [255, 70, 0], [80, 0, 130], [80, 0, 130]],
+            "sample": {"mode": "position", "span": 5.0},
+            "level": {"mode": "wave", "min": 0.35, "max": 1.0,
+                      "speed": 0.35, "phase": 7.0, "detune": 1.6},
+            "frame_ms": 30,
+        },
+    },
+    "thanksgiving": {
+        "label": "THANKSGIVING", "category": "holiday",
+        "recipe": {
+            "palette": [[140, 45, 0], [215, 125, 18], [110, 62, 8], [190, 85, 0]],
+            "sample": {"mode": "noise", "scale": 2.0, "speed": 0.06},
+            "level": {"mode": "wave", "min": 0.45, "max": 1.0,
+                      "speed": 0.15, "phase": 1.2, "detune": 1.0},
+            "frame_ms": 30,
+        },
+    },
+    "newyear": {
+        "label": "NEW YEAR", "category": "holiday",
+        "recipe": {
+            "palette": [[255, 200, 60], [255, 255, 255], [255, 165, 0]],
+            "sample": {"mode": "random"},
+            "level": {"mode": "impulse", "min": 0.04, "max": 1.0,
+                      "rate": 0.65, "decay": 0.9},
+            "frame_ms": 20,
+        },
+    },
+    "valentine": {
+        "label": "VALENTINE", "category": "holiday",
+        "recipe": {
+            "palette": [[255, 0, 80], [255, 120, 180], [170, 0, 55], [255, 60, 120]],
+            "sample": {"mode": "noise", "scale": 1.8, "speed": 0.07},
+            "level": {"mode": "wave", "min": 0.4, "max": 1.0,
+                      "speed": 0.18, "phase": 1.5, "detune": 1.1},
+            "frame_ms": 30,
+        },
+    },
+    "stpatrick": {
+        "label": "ST PATRICK", "category": "holiday",
+        "recipe": {
+            "palette": [[0, 110, 0], [0, 200, 60], [110, 215, 40], [0, 85, 28]],
+            "sample": {"mode": "scroll", "span": 3.0, "speed": 0.1},
+            "level": {"mode": "wave", "min": 0.45, "max": 1.0,
+                      "speed": 0.2, "phase": 2.0, "detune": 1.2},
+            "frame_ms": 25,
+        },
+    },
+    "easter": {
+        "label": "EASTER", "category": "holiday",
+        "recipe": {
+            "palette": [[255, 175, 200], [175, 228, 255], [215, 255, 185],
+                        [255, 240, 165]],
+            "sample": {"mode": "noise", "scale": 1.5, "speed": 0.06},
+            "level": {"mode": "wave", "min": 0.55, "max": 1.0,
+                      "speed": 0.14, "phase": 1.0, "detune": 0.9},
+            "frame_ms": 30,
+        },
+    },
+
     # ---- themes ----
     #
     # These are what LIFX actually ships. Its library is not forty algorithms;
