@@ -115,13 +115,26 @@ bool   g_haveRecipe = false;
  *
  * verifyRollbackLater() is a weak symbol the core provides precisely so an
  * application can take that decision back. Returning true defers it, and the
- * image stays PENDING_VERIFY until confirmOta() below says otherwise. If it
- * never does - because the new firmware crashes, or cannot bring up the LEDs,
- * or cannot reach the network - the bootloader reverts to the previous image on
- * the next boot, with no cable involved.
+ * image stays PENDING_VERIFY until confirmOta() below says otherwise.
  *
- * That is the difference between "the desk strip is the bench" being a rule
- * everyone has to remember and the hardware enforcing it.
+ * !! THIS DOES NOT ACTUALLY ROLL BACK. TESTED, 2026-09-06. !!
+ *
+ * A deliberately broken image - null dereference in setup() - was installed
+ * over the air on the desk strip. It panicked, reset, panicked again, and went
+ * on doing so indefinitely. The previous image was never restored and the strip
+ * needed a USB cable.
+ *
+ * Everything the documentation says is required is present: the bootloader is
+ * built from this core with CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y, the libs
+ * set CONFIG_APP_ROLLBACK_ENABLE=y, Update calls esp_ota_set_boot_partition(),
+ * and the partition scheme has two app slots holding a valid previous image.
+ * Something in that chain still does not do what it claims, and the evidence
+ * was destroyed by the USB recovery that fixed the strip.
+ *
+ * The code stays because it is the documented approach and costs nothing, and
+ * because a future attempt should start from here rather than from scratch. But
+ * NOTHING SHOULD BE RELIED ON. Firmware is proven on the desk strip because
+ * that rule is load-bearing, not because it is tidy.
  */
 bool verifyRollbackLater() { return true; }
 
@@ -773,9 +786,9 @@ void runEffect() {
  * bootloader switches over on reset.
  *
  * A download that fails leaves the current firmware untouched, because nothing
- * has been switched. An image that DOES install but then misbehaves is covered
- * separately, by the deferred rollback at the top of this file - the image stays
- * on probation until it has reached the broker or simply survived two minutes.
+ * has been switched. An image that DOES install and then crashes is NOT
+ * covered: it will loop forever and need a cable. See the rollback note above -
+ * the mechanism is implemented and was tested, and it did not work.
  *
  * The strip is the progress bar. These controllers are mounted in places where
  * a serial cable is not a realistic way to find out whether an update is

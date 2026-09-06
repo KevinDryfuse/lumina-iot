@@ -208,15 +208,13 @@
         <!--
             Firmware over the air.
 
-            From firmware v7 the strip rolls itself back: a new image stays on
-            probation until it has reached the broker or survived two minutes,
-            and the bootloader reverts to the previous one if it does neither.
+            THERE IS NO WORKING ROLLBACK. A deliberately broken image was
+            installed over the air on the desk strip and crash-looped until a
+            USB cable was attached. The deferred-rollback code is in the
+            firmware and it did not save it.
 
-            Before v7 it did not, whatever the comment here used to claim. The
-            core compiles rollback in, but marks the image valid before setup()
-            runs, so a crash afterwards looped forever. The desk strip is still
-            the right place to prove a build - rollback catches a crash, not an
-            effect that merely looks wrong.
+            So the desk strip is the bench, and that rule is the only thing
+            standing between a bad build and a ladder.
         -->
         {% if firmware and firmware.images %}
         <form
