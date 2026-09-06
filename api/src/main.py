@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from .db import init_db, SessionLocal, Device
@@ -55,6 +55,31 @@ app = FastAPI(
 FIRMWARE_DIR = os.getenv("FIRMWARE_DIR", "/firmware")
 os.makedirs(FIRMWARE_DIR, exist_ok=True)
 app.mount("/fw", StaticFiles(directory=FIRMWARE_DIR), name="firmware")
+
+
+# Where a DEVICE should fetch firmware from. Not derivable here: the API runs on
+# a bridged Docker network, so it only knows its own 172.x address, and the URL
+# has to be one the strips can reach on the LAN.
+FIRMWARE_BASE_URL = os.getenv("FIRMWARE_BASE_URL", "").rstrip("/")
+
+
+@app.get("/firmware")
+async def list_firmware():
+    """Firmware images staged for OTA, newest first."""
+    items = []
+    for name in os.listdir(FIRMWARE_DIR):
+        if not name.endswith(".bin"):
+            continue
+        path = os.path.join(FIRMWARE_DIR, name)
+        st = os.stat(path)
+        items.append({
+            "name": name,
+            "size": st.st_size,
+            "modified": st.st_mtime,
+            "url": f"{FIRMWARE_BASE_URL}/fw/{name}" if FIRMWARE_BASE_URL else None,
+        })
+    items.sort(key=lambda i: i["modified"], reverse=True)
+    return {"base_url": FIRMWARE_BASE_URL or None, "images": items}
 
 
 @app.get("/health")
@@ -121,8 +146,21 @@ async def set_config(device_id: str, led_count: int = None, pin: int = None,
 
 
 @app.post("/devices/{device_id}/ota")
-async def ota(device_id: str, url: str):
-    """Install firmware from a URL the device can reach."""
+async def ota(device_id: str, url: str = None, file: str = None):
+    """Install firmware, named either by full URL or by a staged filename."""
+    if not url:
+        if not file:
+            raise HTTPException(status_code=400, detail="url or file required")
+        if not FIRMWARE_BASE_URL:
+            raise HTTPException(
+                status_code=400,
+                detail="FIRMWARE_BASE_URL is not set, so a filename cannot be "
+                       "turned into an address the device can reach",
+            )
+        # Defend the static mount: a filename is a filename, not a path.
+        if "/" in file or "\\" in file or not file.endswith(".bin"):
+            raise HTTPException(status_code=400, detail="bad firmware filename")
+        url = f"{FIRMWARE_BASE_URL}/fw/{file}"
     return device_service.send_ota(device_id, url)
 
 

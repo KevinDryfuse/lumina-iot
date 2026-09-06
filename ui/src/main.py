@@ -102,6 +102,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             "request": request,
             "user": user,
             "devices": devices,
+            "firmware": await api_client.list_firmware(),
         },
     )
 
@@ -119,7 +120,8 @@ async def get_device_card(
     device = await api_client.get_device(device_id)
     return templates.TemplateResponse(
         "partials/device_card.html",
-        {"request": request, "device": device},
+        {"request": request, "device": device,
+         "firmware": await api_client.list_firmware()},
     )
 
 
@@ -211,6 +213,58 @@ async def set_power(
             "request": request,
             "device": device,
             "message": f"Power {'ON' if power_on else 'OFF'}",
+        },
+    )
+
+
+@app.post("/devices/{device_id}/config", response_class=HTMLResponse)
+async def set_device_config(
+    request: Request,
+    device_id: str,
+    led_count: int = Form(...),
+    pin: int = Form(...),
+    led_type: str = Form(...),
+    order: str = Form(...),
+    user: User = Depends(require_auth),
+):
+    """Set a strip's hardware configuration.
+
+    The device restarts to apply it, so the card is re-rendered from what we
+    just asked for rather than from the device - which is about to go away for
+    a couple of seconds and would otherwise report the old values back.
+    """
+    await api_client.set_config(device_id, led_count, pin, led_type, order)
+    device = await api_client.get_device(device_id)
+
+    return templates.TemplateResponse(
+        "partials/device_card.html",
+        {
+            "request": request,
+            "device": device,
+            "firmware": await api_client.list_firmware(),
+            "message": f"Reconfigured to {led_count} LEDs on pin {pin} - restarting",
+        },
+    )
+
+
+@app.post("/devices/{device_id}/ota", response_class=HTMLResponse)
+async def start_ota(
+    request: Request,
+    device_id: str,
+    file: str = Form(...),
+    user: User = Depends(require_auth),
+):
+    """Push firmware to a strip over the air."""
+    await api_client.send_ota(device_id, file)
+    device = await api_client.get_device(device_id)
+
+    return templates.TemplateResponse(
+        "partials/device_card.html",
+        {
+            "request": request,
+            "device": device,
+            "firmware": await api_client.list_firmware(),
+            "message": f"Installing {file} - back in about half a minute",
         },
     )
 

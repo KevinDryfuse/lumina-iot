@@ -142,8 +142,14 @@ class MQTTClient:
                       f"device has {reported}, sending {stored}")
 
             db.commit()
+            stored_after = device.config_dict()
         finally:
             db.close()
+
+        # Mirror into the in-memory record so /devices carries it and the UI can
+        # render a card without a second round trip per device.
+        devices[device_id]["config"] = stored_after
+        devices[device_id]["fw_version"] = payload.get("fw")
 
         # Outside the session: publishing can block, and a DB session held open
         # across network I/O is how connection pools get exhausted.
@@ -264,6 +270,8 @@ class MQTTClient:
                         "b": state.color_b if state else 255,
                     },
                     "effect": state.effect if state else "none",
+                    "config": device.config_dict(),
+                    "fw_version": device.fw_version,
                 }
             print(f"Loaded {len(devices)} devices from database")
         finally:

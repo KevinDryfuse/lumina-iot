@@ -138,6 +138,107 @@
         </button>
     </form>
 
+    <!--
+        Hardware.
+
+        Collapsed by default: it is the panel you touch when you build a strip,
+        not when you use one. Everything here used to be a #define, which is why
+        adding a light meant editing the sketch and reflashing the right board.
+    -->
+    <details class="mb-6 border-t border-tron-border pt-4">
+        <summary class="text-xs text-tron-border uppercase tracking-wide cursor-pointer hover:text-tron-cyan">
+            &gt; Hardware_Config
+            {% if device.config %}
+            <span class="text-tron-border/50 normal-case">
+                — {{ device.config.led_count }} LEDs, pin {{ device.config.pin }}, {{ device.config.type }}
+            </span>
+            {% else %}
+            <span class="text-red-400/70 normal-case">— not yet reported</span>
+            {% endif %}
+            {% if device.fw_version %}
+            <span class="text-tron-border/50 normal-case">· fw v{{ device.fw_version }}</span>
+            {% endif %}
+        </summary>
+
+        <form
+            hx-post="/devices/{{ device.device_id }}/config"
+            hx-target="#device-{{ device.device_id }}"
+            hx-swap="outerHTML"
+            class="mt-4 grid grid-cols-2 gap-3"
+        >
+            <label class="block">
+                <span class="block text-xs text-tron-border uppercase mb-1">LED_Count</span>
+                <input type="number" name="led_count" min="1" max="300"
+                       value="{{ device.config.led_count if device.config else 30 }}"
+                       class="w-full px-2 py-1 text-sm text-tron-cyan bg-transparent border border-tron-border">
+            </label>
+            <label class="block">
+                <span class="block text-xs text-tron-border uppercase mb-1">Data_Pin</span>
+                <input type="number" name="pin" min="0" max="39"
+                       value="{{ device.config.pin if device.config else 5 }}"
+                       class="w-full px-2 py-1 text-sm text-tron-cyan bg-transparent border border-tron-border">
+            </label>
+            <label class="block">
+                <span class="block text-xs text-tron-border uppercase mb-1">Chipset</span>
+                <select name="led_type" class="w-full px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
+                    {% set current_type = device.config.type if device.config else 'WS2815' %}
+                    {% for t in ["WS2815", "WS2812B", "WS2811", "SK6812"] %}
+                    <option value="{{ t }}" {% if current_type == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="block">
+                <span class="block text-xs text-tron-border uppercase mb-1">Color_Order</span>
+                <select name="order" class="w-full px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
+                    {% set current_order = device.config.order if device.config else 'GRB' %}
+                    {% for o in ["GRB", "RGB", "BRG", "RBG", "GBR", "BGR"] %}
+                    <option value="{{ o }}" {% if current_order == o %}selected{% endif %}>{{ o }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <div class="col-span-2 flex items-center gap-3">
+                <button type="submit" class="tron-btn px-4 py-2 border border-tron-cyan text-xs uppercase tracking-wide hover:bg-tron-cyan/10">
+                    [APPLY]
+                    <span class="htmx-indicator ml-2">...</span>
+                </button>
+                <span class="text-xs text-tron-border/60">Restarts the strip</span>
+            </div>
+        </form>
+
+        <!--
+            Firmware over the air.
+
+            The desk strip is the bench: an image that boots into a crash loop
+            stays there, because Arduino's ESP32 core does not enable the
+            bootloader's rollback. Prove a build here before sending it anywhere
+            that needs a ladder.
+        -->
+        {% if firmware and firmware.images %}
+        <form
+            hx-post="/devices/{{ device.device_id }}/ota"
+            hx-target="#device-{{ device.device_id }}"
+            hx-swap="outerHTML"
+            class="mt-5 pt-4 border-t border-tron-border/50"
+        >
+            <span class="block text-xs text-tron-border uppercase mb-2">&gt; Firmware_Update</span>
+            <div class="flex items-center gap-2">
+                <select name="file" class="flex-1 px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
+                    {% for img in firmware.images %}
+                    <option value="{{ img.name }}">{{ img.name }} ({{ (img.size / 1024) | round | int }} KB)</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="tron-btn px-3 py-1 border border-tron-cyan text-xs uppercase">
+                    [FLASH]
+                    <span class="htmx-indicator ml-1">...</span>
+                </button>
+            </div>
+            {% if not firmware.base_url %}
+            <p class="text-xs text-red-400/70 mt-2">FIRMWARE_BASE_URL is not set — the device has no address to fetch from.</p>
+            {% endif %}
+        </form>
+        {% endif %}
+    </details>
+
     <!-- Effects -->
     <div>
         <label class="block text-xs text-tron-border uppercase tracking-wide mb-3">> Effect_Protocols</label>
