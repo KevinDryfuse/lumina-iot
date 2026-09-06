@@ -40,7 +40,7 @@
 // ===================
 // Bump on every build that gets published for OTA. Reported in the announce
 // payload, which is how the server knows which strips are behind.
-#define FW_VERSION 4
+#define FW_VERSION 5
 
 // ===================
 // LED Configuration - runtime, not compile time
@@ -67,6 +67,36 @@ String ledOrder = DEFAULT_ORDER;
 bool   ledsReady = false;
 
 Preferences prefs;
+
+#define MAX_PALETTE 8
+
+enum SampleMode { S_FIXED, S_POSITION, S_SCROLL, S_NOISE, S_RANDOM };
+enum LevelMode  { L_SOLID, L_WAVE, L_BLOB, L_IMPULSE, L_SQUARE, L_FLICKER };
+
+struct Recipe {
+  CRGB    pal[MAX_PALETTE];
+  uint8_t palN = 0;
+
+  SampleMode sMode = S_FIXED;
+  float sAt = 0, sSpeed = 0, sSpan = 1, sScale = 3;
+
+  LevelMode lMode = L_SOLID;
+  float lMin = 0, lMax = 1, lSpeed = 0.2f, lPhase = 0, lDetune = 0;
+  float lWidth = 0.1f, lTrail = 0.3f, lRate = 0.15f, lDecay = 0.85f;
+  bool  lPingPong = true;
+
+  uint16_t frameMs = 20;
+};
+
+Recipe g_recipe;
+bool   g_haveRecipe = false;
+
+/* Per-LED state for the impulse mode. Sparkle and confetti have to remember
+ * which pixels are lit and how far they have faded; everything else in the
+ * engine is a pure function of (p, t). */
+uint8_t g_spark[MAX_LEDS];
+uint8_t g_sparkHue[MAX_LEDS];
+
 
 // ===================
 // Configuration
@@ -254,6 +284,200 @@ void updateLeds() {
 }
 
 // ===================
+// The recipe engine
+// ===================
+/*
+ * An effect as data, so that adding one does not mean touching this file.
+ *
+ * The twelve compiled effects below are not twelve different things. Each one
+ * answers the same two questions, once per LED per frame:
+ *
+ *   1. what colour is this LED?   -> pick a point in a palette
+ *   2. how bright is it?          -> a number from 0 to 1
+ *
+ * Aurora and Ocean are literally the same effect with different palettes and
+ * numbers - both drift a colour band along the strip while a slow sine, phased
+ * per LED, moves the brightness. Chase and Cylon are one bright blob with
+ * different motion. Sparkle and Confetti are one impulse-and-decay with
+ * different colour sources.
+ *
+ * So a recipe is a palette plus two slots, and the whole engine is:
+ *
+ *   for each LED:  colour = palette(sample(p, t)) * level(p, t)
+ *
+ * POSITION IS NORMALISED. p = i / (n - 1), so 0 is the start of the strip and 1
+ * is the end whatever its length. That is the only place the LED count is used,
+ * and it is what lets an effect authored once look the same on a 30-LED desk
+ * strip and a 173-LED wall strip - rather than a chase that crawls on one and
+ * sprints on the other.
+ *
+ * WHAT THIS DELIBERATELY CANNOT DO: fire. effectFire() diffuses heat between
+ * neighbouring pixels, so a pixel depends on its neighbours' previous values
+ * rather than on (p, t) alone. That is a genuinely different kind of effect and
+ * it stays compiled; bending the engine around one effect would cost more than
+ * it saves.
+ */
+static inline float frac01(float x) { return x - floorf(x); }
+
+/* Palette lookup, wrapping. Circular so a scrolling palette loops without a
+ * seam - a linear ramp would jump from the last stop back to the first. */
+CRGB paletteLookup(float x) {
+  if (g_recipe.palN == 0) return CRGB::Black;
+  if (g_recipe.palN == 1) return g_recipe.pal[0];
+
+  float f = frac01(x) * g_recipe.palN;
+  int   i = (int)f;
+  float m = f - i;
+  const CRGB &a = g_recipe.pal[i % g_recipe.palN];
+  const CRGB &b = g_recipe.pal[(i + 1) % g_recipe.palN];
+  return CRGB(a.r + (int)((b.r - a.r) * m),
+              a.g + (int)((b.g - a.g) * m),
+              a.b + (int)((b.b - a.b) * m));
+}
+
+float sampleAt(float p, float t, int i) {
+  const Recipe &r = g_recipe;
+  switch (r.sMode) {
+    case S_POSITION: return p * r.sSpan;
+    case S_SCROLL:   return p * r.sSpan + t * r.sSpeed;
+    case S_NOISE:
+      /* Morph, essentially: a smooth noise field read along the strip and
+       * drifting in time. This is what most of LIFX's ambient themes are. */
+      return inoise8((uint16_t)(p * r.sScale * 256),
+                     (uint16_t)(t * r.sSpeed * 256)) / 255.0f;
+    case S_RANDOM:   return g_sparkHue[i] / 255.0f;
+    case S_FIXED:
+    default:         return r.sAt + t * r.sSpeed;
+  }
+}
+
+float levelAt(float p, float t, int i) {
+  const Recipe &r = g_recipe;
+  switch (r.lMode) {
+    case L_WAVE: {
+      /* DETUNE IS WHAT MAKES THIS LOOK ALIVE. With every LED on the same period
+       * the strip breathes in unison, which reads as cheap. The original aurora
+       * varied the period per LED - beatsin8(3 + (i % 4), ...) - and that small
+       * dissonance is the whole difference between shimmer and a pulse. */
+      float period = 1.0f + r.lDetune * (i % 5) * 0.25f;
+      float phase  = t * r.lSpeed / period + p * r.lPhase;
+      float v      = sin8((uint8_t)(frac01(phase) * 255)) / 255.0f;
+      return r.lMin + (r.lMax - r.lMin) * v;
+    }
+    case L_BLOB: {
+      float pos = r.lPingPong
+                  ? fabsf(frac01(t * r.lSpeed) * 2.0f - 1.0f)   /* triangle: cylon */
+                  : frac01(t * r.lSpeed);                        /* sawtooth: chase */
+      float d = fabsf(p - pos);
+      if (d > r.lWidth) {
+        float tail = (d - r.lWidth) / fmaxf(r.lTrail, 0.001f);
+        return tail >= 1.0f ? r.lMin : r.lMax * (1.0f - tail);
+      }
+      return r.lMax;
+    }
+    case L_IMPULSE: return r.lMin + (r.lMax - r.lMin) * (g_spark[i] / 255.0f);
+    case L_SQUARE:  return (frac01(t * r.lSpeed) < 0.5f) ? r.lMax : r.lMin;
+    case L_FLICKER: return r.lMin + (r.lMax - r.lMin) * (random8() / 255.0f);
+    case L_SOLID:
+    default:        return r.lMax;
+  }
+}
+
+void runRecipe() {
+  const Recipe &r = g_recipe;
+  float t = millis() / 1000.0f;
+
+  /* Impulse state advances once per frame, not once per LED. */
+  if (r.lMode == L_IMPULSE) {
+    for (int i = 0; i < numLeds; i++) g_spark[i] = (uint8_t)(g_spark[i] * r.lDecay);
+    if (random8() < (uint8_t)(r.lRate * 255)) {
+      int i = random16(numLeds);
+      g_spark[i] = 255;
+      g_sparkHue[i] = random8();
+    }
+  }
+
+  for (int i = 0; i < numLeds; i++) {
+    float p = (numLeds > 1) ? (float)i / (numLeds - 1) : 0.0f;
+    CRGB  c = paletteLookup(sampleAt(p, t, i));
+    float v = levelAt(p, t, i);
+    if (v < 0) v = 0;
+    if (v > 1) v = 1;
+    c.nscale8_video((uint8_t)(v * 255));
+    leds[i] = c;
+  }
+  FastLED.show();
+}
+
+static SampleMode parseSample(const char *m) {
+  if (!m) return S_FIXED;
+  if (!strcmp(m, "position")) return S_POSITION;
+  if (!strcmp(m, "scroll"))   return S_SCROLL;
+  if (!strcmp(m, "noise"))    return S_NOISE;
+  if (!strcmp(m, "random"))   return S_RANDOM;
+  return S_FIXED;
+}
+
+static LevelMode parseLevel(const char *m) {
+  if (!m) return L_SOLID;
+  if (!strcmp(m, "wave"))    return L_WAVE;
+  if (!strcmp(m, "blob"))    return L_BLOB;
+  if (!strcmp(m, "impulse")) return L_IMPULSE;
+  if (!strcmp(m, "square"))  return L_SQUARE;
+  if (!strcmp(m, "flicker")) return L_FLICKER;
+  return L_SOLID;
+}
+
+bool parseRecipe(JsonObject j) {
+  Recipe r;
+
+  JsonArray pal = j["palette"];
+  if (pal.isNull() || pal.size() == 0) {
+    Serial.println("recipe: no palette");
+    return false;
+  }
+  for (JsonArray stop : pal) {
+    if (r.palN >= MAX_PALETTE) break;
+    if (stop.size() < 3) continue;
+    r.pal[r.palN++] = CRGB(stop[0].as<int>(), stop[1].as<int>(), stop[2].as<int>());
+  }
+  if (r.palN == 0) return false;
+
+  JsonObject sm = j["sample"];
+  if (!sm.isNull()) {
+    r.sMode  = parseSample(sm["mode"]);
+    r.sAt    = sm["at"]    | r.sAt;
+    r.sSpeed = sm["speed"] | r.sSpeed;
+    r.sSpan  = sm["span"]  | r.sSpan;
+    r.sScale = sm["scale"] | r.sScale;
+  }
+
+  JsonObject lv = j["level"];
+  if (!lv.isNull()) {
+    r.lMode     = parseLevel(lv["mode"]);
+    r.lMin      = lv["min"]      | r.lMin;
+    r.lMax      = lv["max"]      | r.lMax;
+    r.lSpeed    = lv["speed"]    | r.lSpeed;
+    r.lPhase    = lv["phase"]    | r.lPhase;
+    r.lDetune   = lv["detune"]   | r.lDetune;
+    r.lWidth    = lv["width"]    | r.lWidth;
+    r.lTrail    = lv["trail"]    | r.lTrail;
+    r.lRate     = lv["rate"]     | r.lRate;
+    r.lDecay    = lv["decay"]    | r.lDecay;
+    r.lPingPong = lv["pingpong"] | r.lPingPong;
+  }
+
+  r.frameMs = j["frame_ms"] | 20;
+  if (r.frameMs < 5)   r.frameMs = 5;
+  if (r.frameMs > 500) r.frameMs = 500;
+
+  g_recipe = r;
+  g_haveRecipe = true;
+  memset(g_spark, 0, sizeof(g_spark));
+  return true;
+}
+
+// ===================
 // Effects
 // ===================
 
@@ -404,6 +628,15 @@ void effectUSA() {
 }
 
 void runEffect() {
+  /* A recipe takes precedence over the compiled effects of the same name, so
+   * an effect can be moved into data one at a time and compared side by side
+   * against the version it is replacing. */
+  if (g_haveRecipe) {
+    runRecipe();
+    delay(g_recipe.frameMs);
+    return;
+  }
+
   // Classics
   if (currentEffect == "rainbow") {
     effectRainbow();
@@ -677,6 +910,38 @@ void processCommand(String message) {
     updateLeds();
   }
 
+  /*
+   * An effect sent as data.
+   *
+   * Stored in NVS as the raw JSON it arrived as, rather than as unpacked
+   * fields. Two reasons: the format will grow, and a device that boots before
+   * the server is up should come back looking like itself rather than dark.
+   */
+  if (doc["recipe"].is<JsonObject>()) {
+    if (parseRecipe(doc["recipe"].as<JsonObject>())) {
+      String raw;
+      serializeJson(doc["recipe"], raw);
+      prefs.begin("lumina", false);
+      prefs.putString("recipe", raw);
+      prefs.putString("effect", doc["effect"] | "recipe");
+      prefs.end();
+
+      currentEffect = doc["effect"] | "recipe";
+      Serial.println("--- LED ACTION ---");
+      Serial.print("Recipe loaded: ");
+      Serial.print(g_recipe.palN);
+      Serial.print(" palette stops, sample=");
+      Serial.print((int)g_recipe.sMode);
+      Serial.print(" level=");
+      Serial.println((int)g_recipe.lMode);
+    } else {
+      Serial.println("Recipe rejected - keeping the current effect");
+    }
+    Serial.println("=======================================");
+    publishState();
+    return;
+  }
+
   // Handle effect command
   if (doc.containsKey("effect")) {
     currentEffect = doc["effect"].as<String>();
@@ -684,6 +949,14 @@ void processCommand(String message) {
     Serial.println("--- LED ACTION ---");
     Serial.print("Start effect: ");
     Serial.println(currentEffect);
+
+    /* A named effect supersedes a loaded recipe. Without this the recipe would
+     * keep rendering and the buttons would appear to do nothing. */
+    g_haveRecipe = false;
+    prefs.begin("lumina", false);
+    prefs.remove("recipe");
+    prefs.putString("effect", currentEffect);
+    prefs.end();
 
     // Reset effect state
     effectHue = 0;
@@ -835,6 +1108,26 @@ void setup() {
   FastLED.show();
   Serial.print("LEDs initialized: "); Serial.print(numLeds);
   Serial.print(" on pin "); Serial.println(ledPin);
+
+  /* Restore whatever was last running. A strip that reboots at 3am should come
+   * back as itself without waiting for the server to notice and re-send. */
+  prefs.begin("lumina", true);
+  String savedEffect = prefs.getString("effect", "none");
+  String savedRecipe = prefs.getString("recipe", "");
+  prefs.end();
+
+  if (savedRecipe.length()) {
+    JsonDocument rd;
+    if (!deserializeJson(rd, savedRecipe) && parseRecipe(rd.as<JsonObject>())) {
+      currentEffect = savedEffect;
+      Serial.print("Restored recipe: "); Serial.println(savedEffect);
+    } else {
+      Serial.println("Stored recipe would not parse - ignoring it");
+    }
+  } else if (savedEffect != "none") {
+    currentEffect = savedEffect;
+    Serial.print("Restored effect: "); Serial.println(savedEffect);
+  }
 
   // Set up topics based on device ID
   TOPIC_SET = String("lights/") + device_id + "/set";
