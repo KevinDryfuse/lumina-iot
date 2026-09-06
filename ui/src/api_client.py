@@ -113,6 +113,16 @@ async def list_firmware() -> dict:
         return resp.json()
 
 
+async def send_stored_effect(device_id: str, name: str) -> dict:
+    """Send one of the stored effects to a device by name."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            f"{API_URL}/devices/{device_id}/recipe", params={"name": name},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def list_effects() -> dict:
     """Stored effects."""
     async with httpx.AsyncClient(timeout=10) as client:

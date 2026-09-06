@@ -1,271 +1,115 @@
-# Lumina IoT - Local LED Controller
+# Lumina IoT
 
-## Project Overview
+LED strips on a home network: an MQTT broker, Postgres, a JSON API, an HTMX UI,
+and the ESP32 firmware that drives the strips — all in this repository, all
+running on one machine under Docker Compose.
 
-ESP32-based LED strip controller designed for local/home server deployment. All services run in Docker Compose on a single machine.
+Read [README.md](README.md) for what the system is and how to run it,
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit and what
+happens between a click and a lit LED, and [docs/RECIPES.md](docs/RECIPES.md)
+before touching anything to do with effects. This file is the orientation for
+working *in* the repository: where things live, and which invariants are load
+bearing.
 
-**This is a fresh rewrite of the Azure-based led-controller project, simplified for local-only operation.**
-
-## Architecture
-
-```
-┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Browser   │────▶│   FastAPI + UI   │────▶│   Mosquitto     │
-│             │     │   (HTMX-based)   │     │   MQTT Broker   │
-└─────────────┘     └────────┬─────────┘     └────────┬────────┘
-                             │                        │
-                      PostgreSQL                      │
-                      (users, state)                  │
-                                              ┌───────▼───────┐
-                                              │    ESP32      │
-                                              │  LED Strip    │
-                                              └───────────────┘
-```
-
-## Stack
-
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| MQTT Broker | Mosquitto | Device communication |
-| API + UI | FastAPI + HTMX + Jinja2 | Single app serves API and HTML |
-| Database | PostgreSQL | User accounts, device state persistence |
-| Auth | Session-based (bcrypt passwords) | Local user management |
-| Containers | Docker Compose | One command deployment |
-
-## Key Differences from Azure Version
-
-| Feature | Azure Version | Local Version |
-|---------|---------------|---------------|
-| MQTT | Azure IoT Hub | Mosquitto |
-| Auth | Azure Entra ID (OAuth) | PostgreSQL + bcrypt |
-| UI | Streamlit (separate app) | HTMX (embedded in FastAPI) |
-| State | Device Twins | PostgreSQL |
-| Deploy | Terraform + Container Apps | Docker Compose |
-| Cost | ~$5-10/month | Free (self-hosted) |
-
----
-
-## Project Structure
+## Layout
 
 ```
-lumina-iot/
-├── CLAUDE.md              # This file - project docs
-├── docker-compose.yml     # All services
-├── .env.example           # Environment template
-├── api/
-│   ├── Dockerfile
-│   ├── pyproject.toml
-│   └── src/
-│       ├── main.py        # FastAPI app
-│       ├── auth.py        # User auth (bcrypt, sessions)
-│       ├── mqtt.py        # Mosquitto client
-│       ├── db.py          # PostgreSQL models
-│       └── templates/     # Jinja2 + HTMX templates
-│           ├── base.html
-│           ├── login.html
-│           ├── dashboard.html
-│           └── partials/
-│               └── device_card.html
-├── mosquitto/
-│   └── mosquitto.conf     # Broker config
-└── scripts/
-    └── create_user.py     # CLI to add users
+api/src/            The only service that touches MQTT, Postgres or firmware images
+  main.py           FastAPI routes; thin wrappers over services.py
+  services.py       Every device state mutation goes through here
+  mqtt.py           Broker client, announce handling, in-memory device registry
+  db.py             SQLAlchemy models and init_db()
+  effects_seed.py   The eighteen built-in recipes
+ui/src/             HTML only; calls the API over HTTP, knows nothing of MQTT
+  main.py           Session auth, HTMX routes, /studio
+  api_client.py     The one place the UI talks to the API
+  templates/        Jinja2; device_card.html and studio.html carry the interesting bits
+ui/scripts/         create_user.py
+firmware/
+  led_controller/   The sketch. One image, every strip
+  images/           .bin files staged for OTA; bind-mounted into the API, never committed
+mcp-server/         MCP tools over the same API, for driving lights from Claude
+mosquitto/          Broker config
+docs/               RECIPES.md, ARCHITECTURE.md
 ```
 
-**Note:** ESP32 firmware is in a separate repo: [lumina-esp32](../lumina-esp32)
+Four compose services — `mosquitto` (1883), `postgres` (5432), `api` (8001),
+`ui` (8000) — on the `lumina-net` bridge network.
 
----
+## Things that will bite
 
-## Docker Compose Services
+**The recipe format is a contract.** `api/src/effects_seed.py`, the parser in
+`led_controller.ino`, and the JavaScript preview in `studio.html` all implement
+the same maths. A change to any one of them has to land in the same commit as
+the others, and in `docs/RECIPES.md`. The studio's JS is deliberately a
+structural mirror of `runRecipe()` rather than idiomatic JavaScript, because its
+whole value is that a number behaves the same in the browser as on the wall.
 
-```yaml
-services:
-  mosquitto:    # MQTT broker, port 1883
-  postgres:     # Database, port 5432
-  api:          # FastAPI + UI, port 8000
-```
+**Effect seeding is insert-only.** Built-ins are inserted if missing and never
+updated, so that a recipe hand-tuned in the studio survives a redeploy. If you
+change a seeded recipe, existing installs keep the old one until someone deletes
+the row.
 
-All on the same Docker network (`lumina-net`).
+**Write the record before telling the device.** A config change restarts the
+strip and it re-announces on the way up; if the database write came second, that
+announce would race it and be answered with the old config, restarting the strip
+again. `services.set_config()` has the ordering, and a comment saying why.
 
----
+**Config is only published when it differs.** Applying one costs a restart.
+Redeploying the API must not restart every strip in the house.
 
-## Implementation Plan
+**There is no migration tool.** `create_all()` creates missing tables and will
+not alter an existing one, so a new column on an existing table goes in the
+`_ADDED_COLUMNS` list in `api/src/db.py`, applied with `ADD COLUMN IF NOT
+EXISTS` on every start.
 
-### Phase 1: Foundation ✅
-- [x] Create project structure
-- [x] Docker Compose with Mosquitto + PostgreSQL
-- [x] Basic FastAPI app with health check
-- [x] Database models (users, devices, device_state)
+**The API has no auth, and it is published on the host.** That is intentional —
+devices fetch firmware from `/fw` — but it means any new API route is reachable
+by anything on the LAN. Do not put anything behind it that would not survive
+that.
 
-### Phase 2: Authentication ✅
-- [x] User model with bcrypt password hashing
-- [x] Login/logout endpoints
-- [x] Session middleware (cookie-based)
-- [x] create_user.py CLI script
+**Anything sent over MQTT must fit in 2048 bytes.** PubSubClient drops an
+oversized message inside the library with no error and no callback.
 
-### Phase 3: MQTT Integration ✅
-- [x] Mosquitto config (anonymous for devices)
-- [x] FastAPI MQTT client (subscribe to device topics)
-- [x] Device registration via MQTT announcements
-- [x] Command publishing (color, brightness, effect)
+## Firmware
 
-### Phase 4: HTMX UI ✅
-- [x] Base template with Tailwind CSS
-- [x] Login page
-- [x] Dashboard with device cards
-- [x] Color picker (HTMX swap)
-- [x] Brightness slider
-- [x] Effect buttons
-- [ ] Real-time state updates (SSE or polling) — optional enhancement
+Built with the Arduino toolchain, FQBN
+`esp32:esp32:esp32:PartitionScheme=min_spiffs`; verified against esp32 core
+3.3.8, ArduinoJson 7.4.3, FastLED 3.10.3 and PubSubClient 2.8. `secrets.h` is
+not committed — copy `secrets.h.example`.
 
-### Phase 5: ESP32 ✅
-- [x] Simplified local-only version (moved to separate repo: lumina-esp32)
-- [x] Removed all Azure code
-- [x] Auto-generated device ID from chip ID
-- [ ] Test with Docker Compose stack — needs testing
+Bump `FW_VERSION` on any build that gets published for OTA; it is reported in
+the announce payload and is how the server knows which strips are behind. Stage
+the `.bin` in `firmware/images/` under a name that says which version it is.
+`.bin` files are gitignored on purpose.
 
-### Phase 6: Polish
-- [x] State persistence to PostgreSQL
-- [x] Device naming UI (friendly names) - hover device name to edit
-- [ ] Error handling and logging improvements
-- [x] README with deployment instructions
+**Test on the desk strip first.** An image that boots into a crash loop stays
+there: rollback is compiled into the bootloader, but the Arduino core marks a
+pending image valid during `initArduino()`, before `setup()` runs. Nothing that
+fails after that point is recoverable over the air. Strips that need a ladder
+only get builds that have already run on the bench.
 
----
+Adding support for a new data pin means adding a line to the `STRIP_PINS` macro.
+It is brute force because FastLED takes pin and chipset as template parameters;
+the alternative, a sketch per strip, puts every future fix in more than one
+place.
 
-## Database Schema
+## Commands
 
-### users
-```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-### devices
-```sql
-CREATE TABLE devices (
-    id SERIAL PRIMARY KEY,
-    device_id VARCHAR(100) UNIQUE NOT NULL,
-    friendly_name VARCHAR(100),
-    device_type VARCHAR(50) DEFAULT 'led_strip',
-    last_seen TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-### device_state
-```sql
-CREATE TABLE device_state (
-    id SERIAL PRIMARY KEY,
-    device_id VARCHAR(100) UNIQUE NOT NULL REFERENCES devices(device_id),
-    brightness INTEGER DEFAULT 100,
-    color_r INTEGER DEFAULT 255,
-    color_g INTEGER DEFAULT 255,
-    color_b INTEGER DEFAULT 255,
-    effect VARCHAR(50) DEFAULT 'none',
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-```
-
----
-
-## HTMX Patterns
-
-### Color Picker Example
-```html
-<form hx-post="/devices/esp32-01/color"
-      hx-target="#device-esp32-01"
-      hx-swap="outerHTML">
-    <input type="color" name="color" value="#ff0000">
-    <button type="submit">Apply</button>
-</form>
-```
-
-Server returns the updated device card HTML, HTMX swaps it in place.
-
-### Real-time Updates
-Option 1: SSE (Server-Sent Events)
-```html
-<div hx-ext="sse" sse-connect="/events" sse-swap="device-update">
-    <!-- Device cards here, updated via SSE -->
-</div>
-```
-
-Option 2: Polling
-```html
-<div hx-get="/devices" hx-trigger="every 5s" hx-swap="innerHTML">
-    <!-- Refreshes device list every 5 seconds -->
-</div>
-```
-
----
-
-## Environment Variables
-
-```env
-# PostgreSQL
-POSTGRES_USER=lumina
-POSTGRES_PASSWORD=changeme
-POSTGRES_DB=lumina
-
-# API
-DATABASE_URL=postgresql://lumina:changeme@postgres:5432/lumina
-SECRET_KEY=your-secret-key-for-sessions
-MQTT_BROKER=mosquitto
-MQTT_PORT=1883
-```
-
----
-
-## Deployment
-
-### Quick Start
 ```bash
-# Clone repo
-git clone <repo-url>
-cd lumina-iot
-
-# Copy and edit environment
-cp .env.example .env
-# Edit .env with your values
-
-# Start everything
-docker compose up -d
-
-# Create first user
-docker compose exec api python scripts/create_user.py admin
-
-# Open browser
-# http://localhost:8000
+docker compose up -d                 # start everything
+docker compose up -d --build         # after changing api/ or ui/
+docker compose logs -f api           # MQTT traffic and device announces show up here
+docker compose exec ui python scripts/create_user.py <username>
 ```
 
-### ESP32 Setup
+`create_user.py` runs in the `ui` container, not `api` — the UI owns
+authentication and the scripts directory is only copied into that image.
 
-See the separate [lumina-esp32](../lumina-esp32) repository for firmware setup instructions.
+## Style
 
----
-
-## Migration Notes
-
-If coming from the Azure version:
-1. ESP32 already supports local mode — just change `CONNECTION_MODE` to `"local"`
-2. No Azure account needed
-3. State persists in PostgreSQL instead of Device Twins
-4. Auth is username/password instead of Microsoft login
-
----
-
-## Current Status
-
-**Phases 1-5 complete!** Ready for testing.
-
-### Next Steps to Test
-1. `cd C:\Users\Kevin\Desktop\lumina-iot`
-2. `cp .env.example .env`
-3. `docker compose up -d`
-4. `docker compose exec api python scripts/create_user.py admin`
-5. Open http://localhost:8000
-6. See [lumina-esp32](../lumina-esp32) for flashing the ESP32
+Comments in this codebase explain why a thing is the way it is, especially where
+the obvious approach was tried and failed — the OTA deferral in `loop()`, the
+announce reconciliation asymmetry, the `detune` parameter. Keep that. The commit
+messages carry the same weight and are worth reading before changing anything
+load bearing.

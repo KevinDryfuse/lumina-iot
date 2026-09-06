@@ -3,7 +3,10 @@
 Create a new user for Lumina IoT.
 
 Usage:
-    docker compose exec api python scripts/create_user.py <username>
+    docker compose exec ui python scripts/create_user.py <username>
+
+Runs in the ui container: the UI owns authentication, and this directory is
+only copied into that image.
 """
 
 import sys

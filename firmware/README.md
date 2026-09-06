@@ -1,6 +1,12 @@
 # Lumina ESP32 - LED Controller Firmware
 
-ESP32 firmware for controlling WS2815 LED strips via MQTT. Pairs with the [lumina-iot](../lumina-iot) server.
+ESP32 firmware for controlling WS2815 LED strips via MQTT. It pairs with the API
+in the same repository — see [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+
+One image runs every strip. Length, data pin, chipset and colour order are not
+compiled in: they arrive from the server over MQTT and are cached in NVS, so
+flashing is a one-off and everything after it happens from the UI or over the
+air.
 
 ## Hardware Requirements
 
@@ -52,6 +58,10 @@ ip addr
 
 ## LED Wiring (WS2815)
 
+GPIO 5 below is only the default a device comes up on. Any pin in the
+`STRIP_PINS` macro works — 2, 4, 5, 12, 13, 14, 16-19, 21-23, 25-27, 32, 33 —
+and which one a particular strip uses is set from the UI afterwards.
+
 ```
 ESP32          WS2815 Strip
 -----          ------------
@@ -97,6 +107,30 @@ GND      -->   GND (Black/Blue)
 {"effect": "rainbow"}
 ```
 
+**Hardware configuration** — persisted to NVS, and the device restarts to apply
+it. FastLED cannot un-register a controller, so restarting is cheaper than the
+alternative:
+```json
+{"config": {"led_count": 91, "pin": 5, "type": "WS2815", "order": "GRB"}}
+```
+
+**Firmware update** — sent on its own, because the device reboots into the new
+image and anything else in the same payload would be dropped:
+```json
+{"ota": "http://192.168.1.55:8001/fw/led_controller_v5.bin"}
+```
+
+**An effect as data** — a palette and two slots, documented in
+[../docs/RECIPES.md](../docs/RECIPES.md). Stored in NVS as the JSON it arrived
+as, so a strip that reboots comes back as itself:
+```json
+{"effect": "ocean", "recipe": {"palette": [[0,40,90],[0,120,200]],
+ "sample": {"mode": "position"}, "level": {"mode": "wave"}, "frame_ms": 20}}
+```
+
+Everything sent here has to fit in 2048 bytes: PubSubClient drops an oversized
+message inside the library with no error and no callback.
+
 ## Effects
 
 | Category | Effects |
@@ -107,6 +141,12 @@ GND      -->   GND (Black/Blue)
 | **Holiday** | `christmas`, `usa` |
 
 Use `"effect": "none"` to return to solid color mode.
+
+These are the compiled effects, and a named effect clears any loaded recipe —
+otherwise the recipe would keep rendering and the buttons would appear dead. A
+recipe of the same name takes precedence over the compiled version, so the two
+can be compared side by side. Fire stays compiled: it diffuses heat between
+neighbouring pixels and cannot be written as a function of position and time.
 
 ## Troubleshooting
 

@@ -105,6 +105,29 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     )
 
 
+async def card_context(request, device, message=None):
+    """Everything partials/device_card.html needs.
+
+    Gathered in one place because eleven routes render that template, and before
+    this each one assembled the context by hand - which is how the firmware list
+    ended up present on three of them and missing from the other eight.
+    """
+    effects = (await api_client.list_effects()).get("effects", [])
+    grouped: dict[str, list] = {}
+    for e in effects:
+        grouped.setdefault(e.get("category") or "custom", []).append(e)
+
+    ctx = {
+        "request": request,
+        "device": device,
+        "effects_by_category": grouped,
+        "firmware": await api_client.list_firmware(),
+    }
+    if message:
+        ctx["message"] = message
+    return ctx
+
+
 # ===================
 # Effect studio
 # ===================
@@ -153,9 +176,9 @@ async def get_device_card(
 ):
     """Get a single device card (for HTMX refresh)."""
     device = await api_client.get_device(device_id)
-    return templates.TemplateResponse(request, "partials/device_card.html",
-        {"request": request, "device": device,
-         "firmware": await api_client.list_firmware()},
+    return templates.TemplateResponse(
+        request, "partials/device_card.html",
+        await card_context(request, device),
     )
 
 
@@ -174,12 +197,9 @@ async def set_color(
 
     device = await api_client.set_color(device_id, r, g, b)
 
-    return templates.TemplateResponse(request, "partials/device_card.html",
-        {
-            "request": request,
-            "device": device,
-            "message": f"Color set to RGB({r}, {g}, {b})",
-        },
+    return templates.TemplateResponse(
+        request, "partials/device_card.html",
+        await card_context(request, device, f"Color set to RGB({r}, {g}, {b})"),
     )
 
 
@@ -199,12 +219,9 @@ async def set_settings(
 
     device = await api_client.set_settings(device_id, r, g, b, brightness)
 
-    return templates.TemplateResponse(request, "partials/device_card.html",
-        {
-            "request": request,
-            "device": device,
-            "message": "Settings applied",
-        },
+    return templates.TemplateResponse(
+        request, "partials/device_card.html",
+        await card_context(request, device, "Settings applied"),
     )
 
 
@@ -218,12 +235,9 @@ async def set_effect(
     """Set device effect."""
     device = await api_client.set_effect(device_id, effect)
 
-    return templates.TemplateResponse(request, "partials/device_card.html",
-        {
-            "request": request,
-            "device": device,
-            "message": f"Effect set to {effect}",
-        },
+    return templates.TemplateResponse(
+        request, "partials/device_card.html",
+        await card_context(request, device, f"Effect set to {effect}"),
     )
 
 
@@ -238,12 +252,9 @@ async def set_power(
     power_on = power == "on"
     device = await api_client.set_power(device_id, power_on)
 
-    return templates.TemplateResponse(request, "partials/device_card.html",
-        {
-            "request": request,
-            "device": device,
-            "message": f"Power {'ON' if power_on else 'OFF'}",
-        },
+    return templates.TemplateResponse(
+        request, "partials/device_card.html",
+        await card_context(request, device, f"Power {'ON' if power_on else 'OFF'}"),
     )
 
 
@@ -266,13 +277,9 @@ async def set_device_config(
     await api_client.set_config(device_id, led_count, pin, led_type, order)
     device = await api_client.get_device(device_id)
 
-    return templates.TemplateResponse(request, "partials/device_card.html",
-        {
-            "request": request,
-            "device": device,
-            "firmware": await api_client.list_firmware(),
-            "message": f"Reconfigured to {led_count} LEDs on pin {pin} - restarting",
-        },
+    return templates.TemplateResponse(
+        request, "partials/device_card.html",
+        await card_context(request, device, f"Reconfigured to {led_count} LEDs on pin {pin} - restarting"),
     )
 
 
@@ -287,13 +294,24 @@ async def start_ota(
     await api_client.send_ota(device_id, file)
     device = await api_client.get_device(device_id)
 
-    return templates.TemplateResponse(request, "partials/device_card.html",
-        {
-            "request": request,
-            "device": device,
-            "firmware": await api_client.list_firmware(),
-            "message": f"Installing {file} - back in about half a minute",
-        },
+    return templates.TemplateResponse(
+        request, "partials/device_card.html",
+        await card_context(request, device, f"Installing {file} - back in about half a minute"),
+    )
+
+
+@app.post("/devices/{device_id}/recipe", response_class=HTMLResponse)
+async def set_stored_effect(
+    request: Request,
+    device_id: str,
+    name: str = Form(...),
+    user: User = Depends(require_auth),
+):
+    """Send one of the stored effects to a device."""
+    device = await api_client.send_stored_effect(device_id, name)
+    return templates.TemplateResponse(
+        request, "partials/device_card.html",
+        await card_context(request, device, f"Running {name}"),
     )
 
 
@@ -307,10 +325,7 @@ async def set_device_name(
     """Set device friendly name."""
     device = await api_client.set_name(device_id, friendly_name)
 
-    return templates.TemplateResponse(request, "partials/device_card.html",
-        {
-            "request": request,
-            "device": device,
-            "message": f"Name updated to '{friendly_name}'" if friendly_name.strip() else "Name cleared",
-        },
+    return templates.TemplateResponse(
+        request, "partials/device_card.html",
+        await card_context(request, device, f"Name updated to '{friendly_name}'" if friendly_name.strip() else "Name cleared"),
     )

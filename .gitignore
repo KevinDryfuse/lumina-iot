@@ -15,8 +15,8 @@ venv/
 *.swp
 *.swo
 
-# Secrets
-esp32/led_controller/secrets.h
+# Secrets - the firmware moved into this repo; firmware/.gitignore also covers it
+firmware/led_controller/secrets.h
 
 # Docker volumes (if local)
 postgres_data/

@@ -239,146 +239,64 @@
         {% endif %}
     </details>
 
-    <!-- Effects -->
+    <!--
+        Effects.
+
+        Read from the database rather than listed here. They used to be four
+        hardcoded arrays in this template, which meant the template was a third
+        place that had to agree with the firmware and the server about which
+        effects exist - and adding one to the database would not have made it
+        appear on this page at all.
+    -->
     <div>
-        <label class="block text-xs text-tron-border uppercase tracking-wide mb-3">> Effect_Protocols</label>
+        <label class="block text-xs text-tron-border uppercase tracking-wide mb-3">&gt; Effect_Protocols</label>
 
-        <!-- Classics -->
         <div class="mb-3">
-            <div class="text-xs text-tron-border/50 mb-2">// STANDARD</div>
+            <div class="text-xs text-tron-border/50 mb-2">// OFF</div>
+            <form hx-post="/devices/{{ device.device_id }}/effect"
+                  hx-target="#device-{{ device.device_id }}" hx-swap="outerHTML" class="inline">
+                <input type="hidden" name="effect" value="none">
+                <button type="submit" class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
+                    {% if device.effect == 'none' %}border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
+                    {% else %}border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
+                    OFF
+                </button>
+            </form>
+        </div>
+
+        {% for category, items in effects_by_category.items() %}
+        <div class="mb-3">
+            <div class="text-xs text-tron-border/50 mb-2">// {{ category | upper }}</div>
             <div class="flex flex-wrap gap-2">
-                {% set classic_effects = [
-                    ("none", "OFF"),
-                    ("rainbow", "RAINBOW"),
-                    ("breathing", "PULSE"),
-                    ("chase", "CHASE"),
-                    ("sparkle", "SPARKLE")
-                ] %}
-                {% for effect_id, effect_name in classic_effects %}
-                <form
-                    hx-post="/devices/{{ device.device_id }}/effect"
-                    hx-target="#device-{{ device.device_id }}"
-                    hx-swap="outerHTML"
-                    class="inline"
-                >
-                    <input type="hidden" name="effect" value="{{ effect_id }}">
-                    <button
-                        type="submit"
-                        class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
-                            {% if device.effect == effect_id %}
-                                border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
-                            {% else %}
-                                border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
-                            {% endif %}
-                        "
-                    >
-                        {{ effect_name }}
+                {% for e in items %}
+                <form hx-post="/devices/{{ device.device_id }}/recipe"
+                      hx-target="#device-{{ device.device_id }}" hx-swap="outerHTML" class="inline">
+                    <input type="hidden" name="name" value="{{ e.name }}">
+                    <button type="submit" class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
+                        {% if device.effect == e.name %}border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
+                        {% else %}border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
+                        {{ e.label }}
                     </button>
                 </form>
                 {% endfor %}
             </div>
         </div>
+        {% endfor %}
 
-        <!-- Party -->
-        <div class="mb-3">
-            <div class="text-xs text-tron-border/50 mb-2">// PARTY</div>
-            <div class="flex flex-wrap gap-2">
-                {% set party_effects = [
-                    ("fire", "FIRE"),
-                    ("confetti", "CONFETTI"),
-                    ("cylon", "CYLON"),
-                    ("strobe", "STROBE")
-                ] %}
-                {% for effect_id, effect_name in party_effects %}
-                <form
-                    hx-post="/devices/{{ device.device_id }}/effect"
-                    hx-target="#device-{{ device.device_id }}"
-                    hx-swap="outerHTML"
-                    class="inline"
-                >
-                    <input type="hidden" name="effect" value="{{ effect_id }}">
-                    <button
-                        type="submit"
-                        class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
-                            {% if device.effect == effect_id %}
-                                border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
-                            {% else %}
-                                border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
-                            {% endif %}
-                        "
-                    >
-                        {{ effect_name }}
-                    </button>
-                </form>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!-- Ambient -->
-        <div class="mb-3">
-            <div class="text-xs text-tron-border/50 mb-2">// AMBIENT</div>
-            <div class="flex flex-wrap gap-2">
-                {% set ambient_effects = [
-                    ("ocean", "OCEAN"),
-                    ("aurora", "AURORA"),
-                    ("candle", "CANDLE")
-                ] %}
-                {% for effect_id, effect_name in ambient_effects %}
-                <form
-                    hx-post="/devices/{{ device.device_id }}/effect"
-                    hx-target="#device-{{ device.device_id }}"
-                    hx-swap="outerHTML"
-                    class="inline"
-                >
-                    <input type="hidden" name="effect" value="{{ effect_id }}">
-                    <button
-                        type="submit"
-                        class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
-                            {% if device.effect == effect_id %}
-                                border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
-                            {% else %}
-                                border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
-                            {% endif %}
-                        "
-                    >
-                        {{ effect_name }}
-                    </button>
-                </form>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!-- Holiday -->
+        <!-- Fire cannot be a recipe: it diffuses heat between neighbouring
+             pixels, so a pixel depends on its neighbours' previous values
+             rather than on (position, time). It stays compiled. -->
         <div>
-            <div class="text-xs text-tron-border/50 mb-2">// HOLIDAY</div>
-            <div class="flex flex-wrap gap-2">
-                {% set holiday_effects = [
-                    ("christmas", "XMAS"),
-                    ("usa", "USA")
-                ] %}
-                {% for effect_id, effect_name in holiday_effects %}
-                <form
-                    hx-post="/devices/{{ device.device_id }}/effect"
-                    hx-target="#device-{{ device.device_id }}"
-                    hx-swap="outerHTML"
-                    class="inline"
-                >
-                    <input type="hidden" name="effect" value="{{ effect_id }}">
-                    <button
-                        type="submit"
-                        class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
-                            {% if device.effect == effect_id %}
-                                border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
-                            {% else %}
-                                border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan
-                            {% endif %}
-                        "
-                    >
-                        {{ effect_name }}
-                    </button>
-                </form>
-                {% endfor %}
-            </div>
+            <div class="text-xs text-tron-border/50 mb-2">// COMPILED</div>
+            <form hx-post="/devices/{{ device.device_id }}/effect"
+                  hx-target="#device-{{ device.device_id }}" hx-swap="outerHTML" class="inline">
+                <input type="hidden" name="effect" value="fire">
+                <button type="submit" class="tron-btn px-3 py-1 text-xs uppercase tracking-wide border transition
+                    {% if device.effect == 'fire' %}border-tron-cyan text-tron-cyan bg-tron-cyan/10 shadow-tron
+                    {% else %}border-tron-border text-tron-border hover:border-tron-cyan hover:text-tron-cyan{% endif %}">
+                    FIRE
+                </button>
+            </form>
         </div>
     </div>
 </div>
