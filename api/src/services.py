@@ -6,54 +6,74 @@ and API routes call these functions instead of touching
 mqtt_client/devices directly.
 """
 
+import time
+
 from fastapi import HTTPException
 
 from .db import SessionLocal, Device, Effect
 from .mqtt import mqtt_client, devices
 
 
+# A strip publishes a heartbeat every 60 seconds, so three missed ones is a
+# reasonable definition of gone.
+OFFLINE_AFTER_S = 185
+
+
+def _with_online(d: dict) -> dict:
+    """Add a freshly computed `online` to a device record.
+
+    Derived from when the device last spoke rather than stored, because a stored
+    flag was only ever set to True. It was set on every announce and every state
+    message and computed False only at start-up, so a strip that lost power
+    stayed "online" indefinitely - and the desk display, which reads this, would
+    have gone on showing it as available.
+    """
+    age = time.time() - (d.get("last_seen") or 0)
+    return {**d, "online": age < OFFLINE_AFTER_S}
+
+
 def get_all_devices() -> list[dict]:
     """Return all devices."""
-    return list(devices.values())
+    return [_with_online(d) for d in devices.values()]
 
 
 def get_device(device_id: str) -> dict:
     """Return a single device or raise 404."""
     if device_id not in devices:
         raise HTTPException(status_code=404, detail="Device not found")
-    return devices[device_id]
+    return _with_online(devices[device_id])
 
 
 def set_color(device_id: str, r: int, g: int, b: int) -> dict:
     """Set device color. Returns updated device dict."""
-    device = get_device(device_id)
+    get_device(device_id)
     mqtt_client.send_command(device_id, {"color": {"r": r, "g": g, "b": b}})
-    device["color"] = {"r": r, "g": g, "b": b}
-    return device
+    devices[device_id]["color"] = {"r": r, "g": g, "b": b}
+    return _with_online(devices[device_id])
 
 
 def set_brightness(device_id: str, brightness: int) -> dict:
     """Set device brightness (0-100). Returns updated device dict."""
-    device = get_device(device_id)
+    get_device(device_id)
     mqtt_client.send_command(device_id, {"brightness": brightness})
-    device["brightness"] = brightness
-    return device
+    devices[device_id]["brightness"] = brightness
+    return _with_online(devices[device_id])
 
 
 def set_effect(device_id: str, effect: str) -> dict:
     """Set device effect. Returns updated device dict."""
-    device = get_device(device_id)
+    get_device(device_id)
     mqtt_client.send_command(device_id, {"effect": effect})
-    device["effect"] = effect
-    return device
+    devices[device_id]["effect"] = effect
+    return _with_online(devices[device_id])
 
 
 def set_power(device_id: str, power: bool) -> dict:
     """Set device power on/off. Returns updated device dict."""
-    device = get_device(device_id)
+    get_device(device_id)
     mqtt_client.send_command(device_id, {"power": power})
-    device["power"] = power
-    return device
+    devices[device_id]["power"] = power
+    return _with_online(devices[device_id])
 
 
 def get_config(device_id: str) -> dict:
@@ -173,10 +193,10 @@ def send_recipe(device_id: str, recipe: dict, effect_name: str = "recipe") -> di
     an effect worth keeping, and making someone name a thing before they can
     see it on the wall is the wrong order.
     """
-    device = get_device(device_id)
+    get_device(device_id)
     mqtt_client.send_command(device_id, {"effect": effect_name, "recipe": recipe})
-    device["effect"] = effect_name
-    return device
+    devices[device_id]["effect"] = effect_name
+    return _with_online(devices[device_id])
 
 
 def send_stored_effect(device_id: str, name: str) -> dict:
@@ -206,5 +226,5 @@ def set_name(device_id: str, friendly_name: str) -> dict:
     finally:
         db.close()
 
-    device["friendly_name"] = clean_name
-    return device
+    devices[device_id]["friendly_name"] = clean_name
+    return _with_online(devices[device_id])

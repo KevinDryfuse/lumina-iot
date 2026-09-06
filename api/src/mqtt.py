@@ -83,14 +83,14 @@ class MQTTClient:
         if device_id not in devices:
             devices[device_id] = {
                 "device_id": device_id,
-                "online": True,
+                "last_seen": time.time(),
                 "power": True,
                 "brightness": 100,
                 "color": {"r": 255, "g": 255, "b": 255},
                 "effect": "none",
             }
         else:
-            devices[device_id]["online"] = True
+            devices[device_id]["last_seen"] = time.time()
 
         # Persist to database
         send_config = None
@@ -164,8 +164,7 @@ class MQTTClient:
 
         print(f"State update from {device_id}: {payload}")
 
-        # Mark device as online (it's responding)
-        devices[device_id]["online"] = True
+        devices[device_id]["last_seen"] = time.time()
 
         # Update in-memory state
         if "power" in payload:
@@ -240,9 +239,28 @@ class MQTTClient:
         self.send_command(device_id, {"ota": url})
 
     def send_command(self, device_id: str, payload: dict):
-        """Send a command to a device."""
+        """Send a command to a device.
+
+        Refuses rather than publishing into a void. paho accepts a publish on a
+        disconnected client and returns a result nobody was checking, so a
+        command issued while the broker was unreachable vanished with no error,
+        no log line and a 200 back to the caller.
+
+        That is not hypothetical: firing an OTA seconds after restarting this
+        service - before its own MQTT client had reconnected - silently did
+        nothing, and the only symptom was a firmware version that never changed.
+        """
         topic = f"lights/{device_id}/set"
-        self.client.publish(topic, json.dumps(payload))
+
+        if not self.connected:
+            print(f"REFUSED {topic}: not connected to the broker")
+            raise RuntimeError("not connected to the MQTT broker")
+
+        info = self.client.publish(topic, json.dumps(payload))
+        if info.rc != mqtt.MQTT_ERR_SUCCESS:
+            print(f"FAILED {topic}: publish returned rc={info.rc}")
+            raise RuntimeError(f"MQTT publish failed (rc={info.rc})")
+
         print(f"Sent to {topic}: {payload}")
 
     def load_devices_from_db(self):
@@ -254,14 +272,10 @@ class MQTTClient:
             for device in db_devices:
                 state = device.state
                 # Consider device online if seen within last 5 minutes
-                recently_seen = (
-                    device.last_seen
-                    and (now - device.last_seen).total_seconds() < 300
-                )
                 devices[device.device_id] = {
                     "device_id": device.device_id,
                     "friendly_name": device.friendly_name,
-                    "online": recently_seen,
+                    "last_seen": device.last_seen.timestamp() if device.last_seen else 0,
                     "power": True,  # Assume on at startup
                     "brightness": state.brightness if state else 100,
                     "color": {
