@@ -40,7 +40,7 @@
 // ===================
 // Bump on every build that gets published for OTA. Reported in the announce
 // payload, which is how the server knows which strips are behind.
-#define FW_VERSION 2
+#define FW_VERSION 4
 
 // ===================
 // LED Configuration - runtime, not compile time
@@ -101,6 +101,25 @@ PubSubClient mqtt(wifiClient);
 // Heartbeat
 unsigned long lastHeartbeat = 0;
 const unsigned long HEARTBEAT_INTERVAL = 60000;  // 60 seconds
+
+/*
+ * An OTA request, deferred to loop().
+ *
+ * The first attempt ran the update inside the MQTT callback and it did not
+ * work: the download never completed and the broker logged the device as
+ * "exceeded timeout". Two reasons, both fatal on their own.
+ *
+ * The callback runs several frames deep on the Arduino loop task's 8 KB stack,
+ * and HTTPClient plus Update on top of that is not a comfortable fit. And
+ * because the callback blocks for the length of the download, mqtt.loop() is
+ * never called, so the 15-second keepalive expires mid-transfer and the broker
+ * drops the connection out from under it - which also meant the failure report
+ * had nowhere to go, and the whole thing failed silently.
+ *
+ * So the callback does the one thing callbacks should: it writes down what was
+ * asked for and returns.
+ */
+String pendingOta = "";
 
 // Effect animation state
 uint8_t effectHue = 0;
@@ -460,8 +479,10 @@ void otaProgress(int done, int total) {
 }
 
 void handleOta(String url) {
-  Serial.print("OTA requested: ");
+  Serial.print("OTA starting: ");
   Serial.println(url);
+  Serial.print("Free heap: ");
+  Serial.println(ESP.getFreeHeap());
 
   /* Say so before the download starts - on a slow link this is several seconds
    * of apparently nothing happening. */
@@ -479,10 +500,24 @@ void handleOta(String url) {
   String out; serializeJson(note, out);
   mqtt.publish(TOPIC_STATE.c_str(), out.c_str());
 
+  /*
+   * Disconnect deliberately rather than being dropped.
+   *
+   * The transfer takes longer than the 15-second keepalive and nothing is going
+   * to service mqtt.loop() while it runs, so the connection is lost either way.
+   * Ending it on purpose means the broker logs a clean disconnect instead of a
+   * timeout, and loop() reconnects afterwards if the update did not happen.
+   */
+  mqtt.disconnect();
+
   WiFiClient otaClient;
   httpUpdate.onProgress(otaProgress);
   httpUpdate.rebootOnUpdate(true);
 
+  /* The global httpUpdate carries an 8-second HTTP client timeout, set in its
+   * constructor and not adjustable afterwards. Fine for a fetch off the Pi on
+   * the same LAN; if a strip at the far end of the house on a weak signal ever
+   * trips it, the fix is a local HTTPUpdate instance rather than the global. */
   t_httpUpdate_return ret = httpUpdate.update(otaClient, url);
 
   /* Only reached when the update did NOT happen - a success reboots inside
@@ -493,6 +528,14 @@ void handleOta(String url) {
 
   Serial.print("OTA failed: ");
   Serial.println(reason);
+  Serial.print("Free heap after: ");
+  Serial.println(ESP.getFreeHeap());
+
+  /* The broker connection was given up before the transfer; get it back so the
+   * failure can actually be reported rather than disappearing. */
+  if (!mqtt.connected() && mqtt.connect(device_id.c_str())) {
+    mqtt.subscribe(TOPIC_SET.c_str());
+  }
 
   JsonDocument fail;
   fail["device_id"] = device_id;
@@ -551,7 +594,9 @@ void processCommand(String message) {
    * the new image from inside handleOta(). Anything else in the same payload
    * would be silently dropped, so it is sent on its own. */
   if (doc["ota"].is<const char*>()) {
-    handleOta(doc["ota"].as<String>());
+    pendingOta = doc["ota"].as<String>();
+    Serial.print("OTA queued: ");
+    Serial.println(pendingOta);
     return;
   }
 
@@ -819,6 +864,14 @@ void loop() {
     connectMqtt();
   }
   mqtt.loop();
+
+  /* Deferred from the MQTT callback - see pendingOta. Cleared before the call,
+   * so a request that somehow fails catastrophically is not retried forever. */
+  if (pendingOta.length()) {
+    String url = pendingOta;
+    pendingOta = "";
+    handleOta(url);
+  }
 
   // Heartbeat - publish state every 60 seconds to stay "online"
   unsigned long now = millis();
