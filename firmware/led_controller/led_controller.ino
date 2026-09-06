@@ -4,6 +4,23 @@
  * Connects to WiFi and MQTT broker, listens for commands.
  * Local-only version (no Azure).
  *
+ * ONE BINARY, EVERY STRIP. Pin, chipset, colour order and length used to be
+ * #defines, which meant a second strip meant a second build - and in practice
+ * meant commenting out the previous strip's length and hoping you flashed the
+ * right board. They are now configuration: the server sends them, the device
+ * remembers them in NVS, and the same image runs on every controller in the
+ * house.
+ *
+ * FastLED takes pin, chipset and colour order as C++ template parameters, so
+ * those genuinely are compile-time. The switch in applyLedConfig() is how a
+ * runtime value picks one: every supported combination is instantiated, and one
+ * of them is chosen at boot. It costs a few KB of a 4 MB flash and it removes
+ * the entire class of mistake where the wall strip gets the desk strip's build.
+ *
+ * OTA IS THE POINT OF THIS BUILD. Most of these strips are mounted somewhere
+ * awkward, so every future change - including the effect engine - arrives over
+ * the network. See handleOta().
+ *
  * Required Libraries:
  * - PubSubClient (Nick O'Leary)
  * - ArduinoJson (Benoit Blanchon)
@@ -14,18 +31,42 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <FastLED.h>
+#include <Preferences.h>
+#include <HTTPUpdate.h>
 #include "secrets.h"
 
 // ===================
-// LED Configuration
+// Firmware version
 // ===================
-#define LED_PIN     5
-//#define NUM_LEDS    173
-#define NUM_LEDS    91
-#define LED_TYPE    WS2815
-#define COLOR_ORDER GRB
+// Bump on every build that gets published for OTA. Reported in the announce
+// payload, which is how the server knows which strips are behind.
+#define FW_VERSION 2
 
-CRGB leds[NUM_LEDS];
+// ===================
+// LED Configuration - runtime, not compile time
+// ===================
+// The array is the worst case; numLeds is how much of it is real. FastLED's
+// addLeds() takes the count as a runtime argument - only pin, chipset and
+// colour order are template parameters.
+#define MAX_LEDS 300
+
+// What a device that has never been told anything comes up as. Deliberately
+// small and conservative: enough to drive the boot status indicator and no
+// assumption that anything longer is attached.
+#define DEFAULT_PIN    5
+#define DEFAULT_COUNT  30
+#define DEFAULT_TYPE   "WS2815"
+#define DEFAULT_ORDER  "GRB"
+
+CRGB leds[MAX_LEDS];
+
+int    numLeds  = DEFAULT_COUNT;
+int    ledPin   = DEFAULT_PIN;
+String ledType  = DEFAULT_TYPE;
+String ledOrder = DEFAULT_ORDER;
+bool   ledsReady = false;
+
+Preferences prefs;
 
 // ===================
 // Configuration
@@ -79,10 +120,90 @@ String getChipId() {
 }
 
 // ===================
+// LED hardware configuration
+// ===================
+/*
+ * Every supported (chipset, pin) pair, instantiated so a runtime value can
+ * choose one.
+ *
+ * This looks like brute force because it is. FastLED's addLeds is a template
+ * over chipset, pin and colour order, so there is no way to hand it an int
+ * from a config payload. The alternative - a sketch per strip - moves the
+ * duplication somewhere worse, because then every engine fix has to be applied
+ * once per strip and flashed to the right board.
+ *
+ * Colour order is handled separately below: folding it in as well would triple
+ * this table for a setting that has been GRB on every strip so far.
+ */
+#define STRIP_PINS(CHIP)                                                        case 2:  FastLED.addLeds<CHIP, 2,  GRB>(leds, numLeds); return true;          case 4:  FastLED.addLeds<CHIP, 4,  GRB>(leds, numLeds); return true;          case 5:  FastLED.addLeds<CHIP, 5,  GRB>(leds, numLeds); return true;          case 12: FastLED.addLeds<CHIP, 12, GRB>(leds, numLeds); return true;          case 13: FastLED.addLeds<CHIP, 13, GRB>(leds, numLeds); return true;          case 14: FastLED.addLeds<CHIP, 14, GRB>(leds, numLeds); return true;          case 16: FastLED.addLeds<CHIP, 16, GRB>(leds, numLeds); return true;          case 17: FastLED.addLeds<CHIP, 17, GRB>(leds, numLeds); return true;          case 18: FastLED.addLeds<CHIP, 18, GRB>(leds, numLeds); return true;          case 19: FastLED.addLeds<CHIP, 19, GRB>(leds, numLeds); return true;          case 21: FastLED.addLeds<CHIP, 21, GRB>(leds, numLeds); return true;          case 22: FastLED.addLeds<CHIP, 22, GRB>(leds, numLeds); return true;          case 23: FastLED.addLeds<CHIP, 23, GRB>(leds, numLeds); return true;          case 25: FastLED.addLeds<CHIP, 25, GRB>(leds, numLeds); return true;          case 26: FastLED.addLeds<CHIP, 26, GRB>(leds, numLeds); return true;          case 27: FastLED.addLeds<CHIP, 27, GRB>(leds, numLeds); return true;          case 32: FastLED.addLeds<CHIP, 32, GRB>(leds, numLeds); return true;          case 33: FastLED.addLeds<CHIP, 33, GRB>(leds, numLeds); return true;
+
+bool applyLedConfig() {
+  if (numLeds < 1)        numLeds = 1;
+  if (numLeds > MAX_LEDS) numLeds = MAX_LEDS;
+
+  if (ledType == "WS2815" || ledType == "WS2812B" || ledType == "WS2812") {
+    switch (ledPin) { STRIP_PINS(WS2812B) }
+  } else if (ledType == "WS2811") {
+    switch (ledPin) { STRIP_PINS(WS2811) }
+  } else if (ledType == "SK6812") {
+    switch (ledPin) { STRIP_PINS(SK6812) }
+  } else {
+    Serial.print("Unknown LED type '"); Serial.print(ledType);
+    Serial.println("', falling back to WS2812B timing");
+    switch (ledPin) { STRIP_PINS(WS2812B) }
+  }
+
+  Serial.print("Pin "); Serial.print(ledPin);
+  Serial.println(" is not in the supported set - add it to STRIP_PINS");
+  return false;
+}
+
+// ===================
+// Config persistence
+// ===================
+/*
+ * Cached in NVS so a strip that reboots comes back looking like itself.
+ *
+ * This matters more than it sounds. Once the length lives on the server, a
+ * strip that boots while the Pi is down has no idea how long it is - and a
+ * strip that guesses short leaves half of itself dark with no error anywhere.
+ * The cache means the server is needed to CHANGE the configuration, never to
+ * restore it.
+ */
+void loadConfig() {
+  prefs.begin("lumina", true);
+  numLeds  = prefs.getInt("count",  DEFAULT_COUNT);
+  ledPin   = prefs.getInt("pin",    DEFAULT_PIN);
+  ledType  = prefs.getString("type",  DEFAULT_TYPE);
+  ledOrder = prefs.getString("order", DEFAULT_ORDER);
+  prefs.end();
+
+  Serial.print("Config: "); Serial.print(numLeds);
+  Serial.print(" LEDs, pin "); Serial.print(ledPin);
+  Serial.print(", "); Serial.print(ledType);
+  Serial.print(" "); Serial.println(ledOrder);
+}
+
+/* Returns true if anything actually changed. */
+bool saveConfig(int count, int pin, String type, String order) {
+  bool changed = (count != numLeds) || (pin != ledPin) ||
+                 (type != ledType)  || (order != ledOrder);
+  if (!changed) return false;
+
+  prefs.begin("lumina", false);
+  prefs.putInt("count", count);
+  prefs.putInt("pin", pin);
+  prefs.putString("type", type);
+  prefs.putString("order", order);
+  prefs.end();
+  return true;
+}
+
+// ===================
 // Status Indicator (LED 0)
 // ===================
 void showStatus(CRGB color) {
-  fill_solid(leds, NUM_LEDS, CRGB::Black);
+  fill_solid(leds, numLeds, CRGB::Black);
   uint8_t pulse = beatsin8(30, 40, 255);
   for (int i = 0; i < 5; i++) {
     leds[i] = color;
@@ -108,7 +229,7 @@ void flashGreen() {
 // Update LEDs
 // ===================
 void updateLeds() {
-  fill_solid(leds, NUM_LEDS, CRGB(currentR, currentG, currentB));
+  fill_solid(leds, numLeds, CRGB(currentR, currentG, currentB));
   FastLED.setBrightness(map(currentBrightness, 0, 100, 0, 255));
   FastLED.show();
 }
@@ -119,30 +240,30 @@ void updateLeds() {
 
 // CLASSICS
 void effectRainbow() {
-  fill_rainbow(leds, NUM_LEDS, effectHue, 7);
+  fill_rainbow(leds, numLeds, effectHue, 7);
   FastLED.show();
   effectHue++;
 }
 
 void effectBreathing() {
   uint8_t breath = beatsin8(12, 20, 255);
-  fill_solid(leds, NUM_LEDS, CRGB(currentR, currentG, currentB));
+  fill_solid(leds, numLeds, CRGB(currentR, currentG, currentB));
   FastLED.setBrightness(map(breath * currentBrightness / 100, 0, 255, 0, 255));
   FastLED.show();
 }
 
 void effectChase() {
-  fadeToBlackBy(leds, NUM_LEDS, 40);
+  fadeToBlackBy(leds, numLeds, 40);
   leds[effectPos] = CRGB(currentR, currentG, currentB);
   FastLED.show();
   effectPos++;
-  if (effectPos >= NUM_LEDS) effectPos = 0;
+  if (effectPos >= numLeds) effectPos = 0;
 }
 
 void effectSparkle() {
-  fadeToBlackBy(leds, NUM_LEDS, 20);
+  fadeToBlackBy(leds, numLeds, 20);
   if (random8() < 80) {
-    leds[random16(NUM_LEDS)] = CRGB(currentR, currentG, currentB);
+    leds[random16(numLeds)] = CRGB(currentR, currentG, currentB);
   }
   FastLED.show();
 }
@@ -150,15 +271,15 @@ void effectSparkle() {
 // PARTY
 void effectFire() {
   // Fire simulation - heat rises from bottom
-  static byte heat[NUM_LEDS];
+  static byte heat[MAX_LEDS];
 
   // Cool down
-  for (int i = 0; i < NUM_LEDS; i++) {
+  for (int i = 0; i < numLeds; i++) {
     heat[i] = qsub8(heat[i], random8(0, 35));
   }
 
   // Heat rises
-  for (int i = NUM_LEDS - 1; i >= 2; i--) {
+  for (int i = numLeds - 1; i >= 2; i--) {
     heat[i] = (heat[i - 1] + heat[i - 2] + heat[i - 2]) / 3;
   }
 
@@ -168,26 +289,26 @@ void effectFire() {
   }
 
   // Map heat to colors
-  for (int i = 0; i < NUM_LEDS; i++) {
+  for (int i = 0; i < numLeds; i++) {
     leds[i] = HeatColor(heat[i]);
   }
   FastLED.show();
 }
 
 void effectConfetti() {
-  fadeToBlackBy(leds, NUM_LEDS, 10);
-  leds[random16(NUM_LEDS)] += CHSV(effectHue + random8(64), 200, 255);
+  fadeToBlackBy(leds, numLeds, 10);
+  leds[random16(numLeds)] += CHSV(effectHue + random8(64), 200, 255);
   effectHue++;
   FastLED.show();
 }
 
 void effectCylon() {
-  fadeToBlackBy(leds, NUM_LEDS, 20);
+  fadeToBlackBy(leds, numLeds, 20);
   leds[effectPos] = CRGB(currentR, currentG, currentB);
   FastLED.show();
 
   effectPos += effectDirection;
-  if (effectPos >= NUM_LEDS - 1 || effectPos <= 0) {
+  if (effectPos >= numLeds - 1 || effectPos <= 0) {
     effectDirection *= -1;
   }
 }
@@ -195,9 +316,9 @@ void effectCylon() {
 void effectStrobe() {
   static bool on = false;
   if (on) {
-    fill_solid(leds, NUM_LEDS, CRGB(currentR, currentG, currentB));
+    fill_solid(leds, numLeds, CRGB(currentR, currentG, currentB));
   } else {
-    fill_solid(leds, NUM_LEDS, CRGB::Black);
+    fill_solid(leds, numLeds, CRGB::Black);
   }
   on = !on;
   FastLED.show();
@@ -205,7 +326,7 @@ void effectStrobe() {
 
 // CHILL / AMBIENT
 void effectOcean() {
-  for (int i = 0; i < NUM_LEDS; i++) {
+  for (int i = 0; i < numLeds; i++) {
     uint8_t wave = beatsin8(6 + (i % 5), 100, 255, 0, i * 10);
     leds[i] = CRGB(0, wave / 3, wave);
   }
@@ -213,7 +334,7 @@ void effectOcean() {
 }
 
 void effectAurora() {
-  for (int i = 0; i < NUM_LEDS; i++) {
+  for (int i = 0; i < numLeds; i++) {
     uint8_t hue = effectHue + (i * 2);
     uint8_t brightness = beatsin8(3 + (i % 4), 50, 255, 0, i * 5);
     leds[i] = CHSV(96 + (sin8(hue) / 8), 255, brightness);  // Greens and blues
@@ -223,7 +344,7 @@ void effectAurora() {
 }
 
 void effectCandle() {
-  for (int i = 0; i < NUM_LEDS; i++) {
+  for (int i = 0; i < numLeds; i++) {
     uint8_t flicker = random8(180, 255);
     leds[i] = CRGB(flicker, flicker / 3, 0);  // Warm orange/yellow
   }
@@ -232,24 +353,24 @@ void effectCandle() {
 
 // HOLIDAY
 void effectChristmas() {
-  fadeToBlackBy(leds, NUM_LEDS, 5);
+  fadeToBlackBy(leds, numLeds, 5);
   // Alternating red and green with occasional twinkle
-  for (int i = 0; i < NUM_LEDS; i++) {
+  for (int i = 0; i < numLeds; i++) {
     if (leds[i].getLuma() < 20) {
       leds[i] = (i % 2 == 0) ? CRGB(50, 0, 0) : CRGB(0, 50, 0);
     }
   }
   // Random twinkle
   if (random8() < 60) {
-    int pos = random16(NUM_LEDS);
+    int pos = random16(numLeds);
     leds[pos] = (pos % 2 == 0) ? CRGB::Red : CRGB::Green;
   }
   FastLED.show();
 }
 
 void effectUSA() {
-  int section = NUM_LEDS / 3;
-  for (int i = 0; i < NUM_LEDS; i++) {
+  int section = numLeds / 3;
+  for (int i = 0; i < numLeds; i++) {
     if (i < section) {
       leds[i] = CRGB::Red;
     } else if (i < section * 2) {
@@ -259,7 +380,7 @@ void effectUSA() {
     }
   }
   // Add shimmer
-  leds[random16(NUM_LEDS)].fadeToBlackBy(random8(50, 150));
+  leds[random16(numLeds)].fadeToBlackBy(random8(50, 150));
   FastLED.show();
 }
 
@@ -314,6 +435,83 @@ void runEffect() {
 }
 
 // ===================
+// Over-the-air update
+// ===================
+/*
+ * Triggered by MQTT: {"ota": "http://192.168.1.55:8080/fw/led_controller_3.bin"}
+ *
+ * The ESP32's default 4 MB partition table already carries two app slots, so
+ * there is nothing to configure: the new image is written to the slot that is
+ * not running, and the bootloader switches over on reset. A download that
+ * fails, or an image that will not boot, leaves the current firmware exactly
+ * where it was.
+ *
+ * The strip is the progress bar. These controllers are mounted in places where
+ * a serial cable is not a realistic way to find out whether an update is
+ * working, so it says so in blue, from across the room.
+ */
+void otaProgress(int done, int total) {
+  if (!ledsReady || total <= 0) return;
+  int lit = (int)((int64_t)done * numLeds / total);
+  fill_solid(leds, numLeds, CRGB::Black);
+  for (int i = 0; i < lit && i < numLeds; i++) leds[i] = CRGB(0, 40, 120);
+  FastLED.setBrightness(255);
+  FastLED.show();
+}
+
+void handleOta(String url) {
+  Serial.print("OTA requested: ");
+  Serial.println(url);
+
+  /* Say so before the download starts - on a slow link this is several seconds
+   * of apparently nothing happening. */
+  if (ledsReady) {
+    fill_solid(leds, numLeds, CRGB::Black);
+    for (int i = 0; i < 5 && i < numLeds; i++) leds[i] = CRGB(0, 40, 120);
+    FastLED.setBrightness(255);
+    FastLED.show();
+  }
+
+  JsonDocument note;
+  note["device_id"] = device_id;
+  note["ota"] = "started";
+  note["url"] = url;
+  String out; serializeJson(note, out);
+  mqtt.publish(TOPIC_STATE.c_str(), out.c_str());
+
+  WiFiClient otaClient;
+  httpUpdate.onProgress(otaProgress);
+  httpUpdate.rebootOnUpdate(true);
+
+  t_httpUpdate_return ret = httpUpdate.update(otaClient, url);
+
+  /* Only reached when the update did NOT happen - a success reboots inside
+   * update() and never returns here. */
+  String reason = (ret == HTTP_UPDATE_NO_UPDATES)
+                    ? "server said no update"
+                    : httpUpdate.getLastErrorString();
+
+  Serial.print("OTA failed: ");
+  Serial.println(reason);
+
+  JsonDocument fail;
+  fail["device_id"] = device_id;
+  fail["ota"] = "failed";
+  fail["error"] = reason;
+  String fout; serializeJson(fail, fout);
+  mqtt.publish(TOPIC_STATE.c_str(), fout.c_str());
+
+  /* Red for a beat so a failed update is visible without reading a log. */
+  if (ledsReady) {
+    for (int i = 0; i < 3; i++) {
+      fill_solid(leds, numLeds, CRGB::Red); FastLED.show(); delay(200);
+      fill_solid(leds, numLeds, CRGB::Black); FastLED.show(); delay(200);
+    }
+    updateLeds();
+  }
+}
+
+// ===================
 // Get State as JSON String
 // ===================
 String getStateJson() {
@@ -349,6 +547,44 @@ void processCommand(String message) {
     return;
   }
 
+  /* OTA first, and it does not return on success - the device reboots into
+   * the new image from inside handleOta(). Anything else in the same payload
+   * would be silently dropped, so it is sent on its own. */
+  if (doc["ota"].is<const char*>()) {
+    handleOta(doc["ota"].as<String>());
+    return;
+  }
+
+  /*
+   * Hardware configuration, then restart.
+   *
+   * FastLED has no way to un-register a strip, so re-running addLeds against a
+   * different pin or length in a live sketch leaves the old controller behind
+   * driving the old pin. Persisting and rebooting is two seconds of darkness
+   * and avoids the entire question.
+   */
+  if (doc["config"].is<JsonObject>()) {
+    JsonObject c = doc["config"];
+    int    count = c["led_count"] | numLeds;
+    int    pin   = c["pin"]       | ledPin;
+    String type  = c["type"].is<const char*>()  ? c["type"].as<String>()  : ledType;
+    String order = c["order"].is<const char*>() ? c["order"].as<String>() : ledOrder;
+
+    Serial.println("--- CONFIG ---");
+    if (saveConfig(count, pin, type, order)) {
+      Serial.println("Configuration changed, restarting");
+      if (ledsReady) {
+        fill_solid(leds, numLeds, CRGB(0, 40, 120));
+        FastLED.setBrightness(255);
+        FastLED.show();
+      }
+      delay(400);
+      ESP.restart();
+    }
+    Serial.println("Configuration unchanged");
+    return;
+  }
+
   // Handle power command
   if (doc.containsKey("power")) {
     powerOn = doc["power"].as<bool>();
@@ -358,7 +594,7 @@ void processCommand(String message) {
     Serial.println(powerOn ? "ON" : "OFF");
 
     if (!powerOn) {
-      fill_solid(leds, NUM_LEDS, CRGB::Black);
+      fill_solid(leds, numLeds, CRGB::Black);
       FastLED.show();
     } else {
       updateLeds();
@@ -449,9 +685,20 @@ void announceDevice() {
   doc["device_id"] = device_id;
   doc["type"] = "led_strip";
   doc["ip"] = WiFi.localIP().toString();
+  doc["fw"] = FW_VERSION;
   doc["capabilities"][0] = "color";
   doc["capabilities"][1] = "brightness";
   doc["capabilities"][2] = "effects";
+  doc["capabilities"][3] = "ota";
+  doc["capabilities"][4] = "config";
+
+  /* What this strip currently believes it is. A device announcing a length the
+   * server has no record of is how a newly built strip gets registered, and how
+   * a mismatch gets noticed instead of silently persisting. */
+  doc["config"]["led_count"] = numLeds;
+  doc["config"]["pin"]       = ledPin;
+  doc["config"]["type"]      = ledType;
+  doc["config"]["order"]     = ledOrder;
 
   String output;
   serializeJson(doc, output);
@@ -527,12 +774,22 @@ void setup() {
   Serial.println(device_id);
   Serial.println("================================");
 
-  // Initialize FastLED
-  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  // Initialize FastLED from stored configuration
+  loadConfig();
+  ledsReady = applyLedConfig();
+  if (!ledsReady) {
+    /* An unusable pin would otherwise mean a device with no status indicator
+     * and no way to say why. Fall back to the default so it can at least boot,
+     * announce itself and be reconfigured over the air. */
+    Serial.println("Falling back to default pin so the strip can still report in");
+    ledPin = DEFAULT_PIN;
+    ledsReady = applyLedConfig();
+  }
   FastLED.setBrightness(255);
-  fill_solid(leds, NUM_LEDS, CRGB::Black);
+  fill_solid(leds, numLeds, CRGB::Black);
   FastLED.show();
-  Serial.println("LEDs initialized");
+  Serial.print("LEDs initialized: "); Serial.print(numLeds);
+  Serial.print(" on pin "); Serial.println(ledPin);
 
   // Set up topics based on device ID
   TOPIC_SET = String("lights/") + device_id + "/set";
@@ -540,6 +797,12 @@ void setup() {
 
   // Connect to WiFi
   connectWiFi();
+
+  /* PubSubClient's default buffer is 256 bytes, which a config payload can
+   * already brush against and an effect recipe will exceed outright. An
+   * oversized message is dropped silently at the library boundary - no error,
+   * no callback - so this is raised before anything depends on it. */
+  mqtt.setBufferSize(2048);
 
   // Configure MQTT callback
   mqtt.setCallback(onMqttMessage);
