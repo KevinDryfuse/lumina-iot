@@ -20,7 +20,8 @@
 // LED Configuration
 // ===================
 #define LED_PIN     5
-#define NUM_LEDS    200
+//#define NUM_LEDS    173
+#define NUM_LEDS    91
 #define LED_TYPE    WS2815
 #define COLOR_ORDER GRB
 
