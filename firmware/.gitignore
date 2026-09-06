@@ -1,0 +1,13 @@
+# Secrets
+secrets.h
+
+# Arduino build artifacts
+*.elf
+*.bin
+*.hex
+build/
+
+# IDE
+.vscode/
+*.swp
+*.swo
