@@ -152,7 +152,7 @@ BUILTIN = {
         },
     },
     "candycane": {
-        "label": "CANDY CANE", "category": "holiday",
+        "label": "CANDY", "category": "holiday",
         "recipe": {
             "palette": [[220, 0, 0], [220, 0, 0], [255, 255, 255], [255, 255, 255]],
             "sample": {"mode": "scroll", "span": 5.0, "speed": 0.12},
@@ -220,7 +220,7 @@ BUILTIN = {
         },
     },
     "nightshift": {
-        "label": "NIGHTSHIFT", "category": "ambient",
+        "label": "NIGHT", "category": "ambient",
         "recipe": {
             # Warm, very dim, no blue at all. For working late without wrecking
             # your eyes - the ceiling of 0.45 is the entire point of this one.
@@ -280,7 +280,7 @@ BUILTIN = {
         },
     },
     "datastream": {
-        "label": "DATASTREAM", "category": "scifi",
+        "label": "STREAM", "category": "scifi",
         "recipe": {
             "palette": [[0, 16, 8], [0, 255, 110], [0, 55, 35], [0, 8, 4]],
             "sample": {"mode": "scroll", "span": 3.0, "speed": 0.55},
@@ -324,7 +324,7 @@ BUILTIN = {
         },
     },
     "thanksgiving": {
-        "label": "THANKSGIVING", "category": "holiday",
+        "label": "HARVEST", "category": "holiday",
         "recipe": {
             "palette": [[140, 45, 0], [215, 125, 18], [110, 62, 8], [190, 85, 0]],
             "sample": {"mode": "noise", "scale": 2.0, "speed": 0.06},
@@ -354,7 +354,7 @@ BUILTIN = {
         },
     },
     "stpatrick": {
-        "label": "ST PATRICK", "category": "holiday",
+        "label": "PATRICK", "category": "holiday",
         "recipe": {
             "palette": [[0, 110, 0], [0, 200, 60], [110, 215, 40], [0, 85, 28]],
             "sample": {"mode": "scroll", "span": 3.0, "speed": 0.1},
