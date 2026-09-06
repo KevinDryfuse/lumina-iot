@@ -12,7 +12,8 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
-from .db import init_db, SessionLocal, Device
+from .db import init_db, SessionLocal, Device, Effect
+from .effects_seed import seed_effects
 from .mqtt import mqtt_client, devices as devices_dict, MQTT_BROKER, MQTT_PORT
 from . import services as device_service
 
@@ -22,6 +23,8 @@ async def lifespan(app: FastAPI):
     """Initialize DB, load devices, connect MQTT."""
     init_db()
     print("Database initialized")
+
+    seed_effects(SessionLocal, Effect)
 
     mqtt_client.load_devices_from_db()
     mqtt_client.connect()
