@@ -77,6 +77,8 @@ class MQTTClient:
 
         print(f"Device announced: {device_id}")
 
+        reported = payload.get("config") or {}
+
         # Update in-memory state
         if device_id not in devices:
             devices[device_id] = {
@@ -91,6 +93,7 @@ class MQTTClient:
             devices[device_id]["online"] = True
 
         # Persist to database
+        send_config = None
         db = SessionLocal()
         try:
             device = db.query(Device).filter(Device.device_id == device_id).first()
@@ -110,10 +113,42 @@ class MQTTClient:
                 print(f"New device registered: {device_id}")
             else:
                 device.last_seen = datetime.utcnow()
-                db.commit()
-                print(f"Device reconnected: {device_id}")
+
+            device.fw_version = payload.get("fw")
+
+            #
+            # Reconcile hardware configuration.
+            #
+            # A strip we have never seen is believed: whatever it reports gets
+            # adopted as the record. A strip we DO have a record for is
+            # corrected, because the record is what someone edited in the UI and
+            # the device may be a freshly flashed board that has come up on
+            # conservative defaults.
+            #
+            # Only send when they actually differ. A config message costs the
+            # device a restart, and restarting every strip in the house whenever
+            # the API happens to redeploy would be its own kind of bug.
+            #
+            stored = device.config_dict()
+            if stored is None and reported:
+                device.led_count = reported.get("led_count")
+                device.led_pin = reported.get("pin")
+                device.led_type = reported.get("type")
+                device.led_order = reported.get("order")
+                print(f"Adopted reported config from {device_id}: {reported}")
+            elif stored is not None and reported != stored:
+                send_config = stored
+                print(f"Config mismatch on {device_id}: "
+                      f"device has {reported}, sending {stored}")
+
+            db.commit()
         finally:
             db.close()
+
+        # Outside the session: publishing can block, and a DB session held open
+        # across network I/O is how connection pools get exhausted.
+        if send_config:
+            self.send_command(device_id, {"config": send_config})
 
     def _handle_state_update(self, payload: dict):
         """Handle device state update."""
@@ -188,6 +223,15 @@ class MQTTClient:
         self.client.loop_stop()
         self.client.disconnect()
         print("Disconnected from MQTT broker")
+
+    def send_ota(self, device_id: str, url: str):
+        """Tell a device to fetch and install new firmware.
+
+        Sent on its own, never alongside other keys: the device acts on it
+        immediately and reboots, so anything else in the same payload would be
+        silently dropped.
+        """
+        self.send_command(device_id, {"ota": url})
 
     def send_command(self, device_id: str, payload: dict):
         """Send a command to a device."""

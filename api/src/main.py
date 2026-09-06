@@ -7,7 +7,10 @@ No auth — internal only (not exposed to internet).
 
 from contextlib import asynccontextmanager
 
+import os
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from .db import init_db, SessionLocal, Device
 from .mqtt import mqtt_client, devices as devices_dict, MQTT_BROKER, MQTT_PORT
@@ -34,6 +37,24 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+#
+# Firmware images, for over-the-air updates.
+#
+# Served from here rather than from somewhere else on the network because the
+# API is the only thing that already knows every device's address and is already
+# reachable from all of them. A device is told an absolute URL, so this has to
+# be served on an interface the strips can reach - which is why the API's port
+# is published on the host rather than kept inside the compose network.
+#
+# Nothing here is secret. It is signed by nothing either, which is worth being
+# honest about: anyone already on this LAN could serve a strip a firmware image
+# of their own. That is the same trust boundary the rest of Lumina sits behind -
+# the API has no authentication at all - and it is not made worse by this.
+FIRMWARE_DIR = os.getenv("FIRMWARE_DIR", "/firmware")
+os.makedirs(FIRMWARE_DIR, exist_ok=True)
+app.mount("/fw", StaticFiles(directory=FIRMWARE_DIR), name="firmware")
 
 
 @app.get("/health")
@@ -84,6 +105,25 @@ async def set_color(device_id: str, r: int, g: int, b: int):
 async def set_brightness(device_id: str, brightness: int):
     """Set device brightness (0-100)."""
     return device_service.set_brightness(device_id, brightness)
+
+
+@app.get("/devices/{device_id}/config")
+async def get_config(device_id: str):
+    """Get device hardware configuration (LED count, pin, chipset)."""
+    return device_service.get_config(device_id)
+
+
+@app.post("/devices/{device_id}/config")
+async def set_config(device_id: str, led_count: int = None, pin: int = None,
+                     led_type: str = None, order: str = None):
+    """Set device hardware configuration. The device restarts to apply it."""
+    return device_service.set_config(device_id, led_count, pin, led_type, order)
+
+
+@app.post("/devices/{device_id}/ota")
+async def ota(device_id: str, url: str):
+    """Install firmware from a URL the device can reach."""
+    return device_service.send_ota(device_id, url)
 
 
 @app.post("/devices/{device_id}/effect")

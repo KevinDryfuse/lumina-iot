@@ -5,7 +5,10 @@ secrets.h
 *.elf
 *.bin
 *.hex
-build/
+led_controller/build/
+
+# Compiled images staged for OTA - served, never committed
+images/*.bin
 
 # IDE
 .vscode/

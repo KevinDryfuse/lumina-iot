@@ -7,7 +7,7 @@ Uses SQLAlchemy with PostgreSQL.
 import os
 from datetime import datetime
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, text
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://lumina:changeme@localhost:5432/lumina")
@@ -38,7 +38,36 @@ class Device(Base):
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # ---- hardware configuration ----
+    #
+    # What used to be #defines in the sketch. The server owns these so that one
+    # firmware image runs every strip in the house; the device caches whatever
+    # it was last told, so it can boot correctly with the server down.
+    #
+    # NULL means "never been told" - the first announce adopts whatever the
+    # device reports, and after that this row is the authority. That ordering is
+    # deliberate: a strip already working should not be reconfigured by the mere
+    # act of the server learning about it.
+    led_count = Column(Integer, nullable=True)
+    led_pin = Column(Integer, nullable=True)
+    led_type = Column(String(20), nullable=True)
+    led_order = Column(String(8), nullable=True)
+
+    # Reported by the device on announce; what OTA decisions are made against.
+    fw_version = Column(Integer, nullable=True)
+
     state = relationship("DeviceState", back_populates="device", uselist=False)
+
+    def config_dict(self) -> dict | None:
+        """The device's hardware configuration, or None if never set."""
+        if self.led_count is None:
+            return None
+        return {
+            "led_count": self.led_count,
+            "pin": self.led_pin,
+            "type": self.led_type,
+            "order": self.led_order,
+        }
 
 
 class DeviceState(Base):
@@ -66,6 +95,25 @@ def get_db():
         db.close()
 
 
+# Columns added after the devices table already existed in production.
+# create_all() only creates missing TABLES - it will not alter an existing one -
+# and there is no migration tool in this project, so they are added by hand.
+# ADD COLUMN IF NOT EXISTS makes this safe to run on every start.
+_ADDED_COLUMNS = [
+    ("led_count", "INTEGER"),
+    ("led_pin", "INTEGER"),
+    ("led_type", "VARCHAR(20)"),
+    ("led_order", "VARCHAR(8)"),
+    ("fw_version", "INTEGER"),
+]
+
+
 def init_db():
-    """Create all tables."""
+    """Create all tables, and add any columns a pre-existing table is missing."""
     Base.metadata.create_all(bind=engine)
+
+    with engine.begin() as conn:
+        for name, coltype in _ADDED_COLUMNS:
+            conn.execute(text(
+                f"ALTER TABLE devices ADD COLUMN IF NOT EXISTS {name} {coltype}"
+            ))

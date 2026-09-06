@@ -41,8 +41,14 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lumina}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-lumina}
       MQTT_BROKER: mosquitto
       MQTT_PORT: 1883
+      FIRMWARE_DIR: /firmware
     ports:
       - "8001:8001"
+    volumes:
+      # Firmware images for OTA, served at /fw. A bind mount rather than a named
+      # volume so a new build can be dropped in with scp and picked up without
+      # rebuilding the image.
+      - ./firmware/images:/firmware
     depends_on:
       postgres:
         condition: service_healthy

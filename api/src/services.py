@@ -56,6 +56,67 @@ def set_power(device_id: str, power: bool) -> dict:
     return device
 
 
+def get_config(device_id: str) -> dict:
+    """Return a device's hardware configuration."""
+    get_device(device_id)
+    db = SessionLocal()
+    try:
+        db_device = db.query(Device).filter(Device.device_id == device_id).first()
+        return {
+            "device_id": device_id,
+            "config": db_device.config_dict() if db_device else None,
+            "fw_version": db_device.fw_version if db_device else None,
+        }
+    finally:
+        db.close()
+
+
+def set_config(device_id: str, led_count: int | None = None, pin: int | None = None,
+               led_type: str | None = None, order: str | None = None) -> dict:
+    """Change a device's hardware configuration.
+
+    Writes the record first, then tells the device. That order matters: the
+    device restarts on a config change, and it re-announces on the way back up.
+    If the record were written second, that announce would race the write and
+    the reconciliation in _handle_device_announce would send the OLD config
+    straight back, restarting it again.
+    """
+    get_device(device_id)
+
+    db = SessionLocal()
+    try:
+        db_device = db.query(Device).filter(Device.device_id == device_id).first()
+        if not db_device:
+            raise HTTPException(status_code=404, detail="Device not found")
+
+        if led_count is not None:
+            if not 1 <= led_count <= 300:
+                raise HTTPException(status_code=400, detail="led_count must be 1-300")
+            db_device.led_count = led_count
+        if pin is not None:
+            db_device.led_pin = pin
+        if led_type is not None:
+            db_device.led_type = led_type
+        if order is not None:
+            db_device.led_order = order
+
+        db.commit()
+        config = db_device.config_dict()
+    finally:
+        db.close()
+
+    if config:
+        mqtt_client.send_command(device_id, {"config": config})
+    return {"device_id": device_id, "config": config}
+
+
+def send_ota(device_id: str, url: str) -> dict:
+    """Start an over-the-air firmware update on one device."""
+    get_device(device_id)
+    mqtt_client.send_ota(device_id, url)
+    return {"device_id": device_id, "ota": "requested", "url": url}
+
+
 def set_name(device_id: str, friendly_name: str) -> dict:
     """Set device friendly name. Persists to DB. Returns updated device dict."""
     device = get_device(device_id)
