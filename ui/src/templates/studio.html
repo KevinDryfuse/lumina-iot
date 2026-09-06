@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+{% block title %}LUMINA // EFFECT_STUDIO{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto p-6">
+
+  <div class="flex justify-between items-end mb-6 border-b border-tron-border pb-4">
+    <div>
+      <h1 class="text-2xl glow-subtle tracking-wide">EFFECT_STUDIO</h1>
+      <p class="text-xs text-tron-border mt-1">
+        Same maths as the strip, running in this browser. Tune here, push when it looks right.
+      </p>
+    </div>
+    <a href="/" class="text-xs text-tron-border hover:text-tron-cyan">[BACK]</a>
+  </div>
+
+  <!--
+    The preview.
+
+    This exists because the alternative is a loop of: change a number, build,
+    flash, walk over, squint, repeat. That loop is slow enough to stop anyone
+    ever authoring twenty palettes, which is the entire point of the engine.
+  -->
+  <div class="border border-tron-border bg-tron-panel/50 p-4 mb-6">
+    <div class="flex justify-between text-xs text-tron-border uppercase mb-2">
+      <span>&gt; Preview</span>
+      <span id="fps-readout" class="text-tron-border/50"></span>
+    </div>
+    <canvas id="strip" height="60" class="w-full block" style="image-rendering: pixelated;"></canvas>
+    <div class="flex items-center gap-4 mt-3">
+      <label class="text-xs text-tron-border">
+        LEDs
+        <input id="preview-count" type="number" value="91" min="1" max="300"
+               class="w-20 ml-2 px-2 py-1 text-tron-cyan bg-transparent border border-tron-border">
+      </label>
+      <span class="text-xs text-tron-border/50">
+        Position is normalised, so changing this should <em>not</em> change how the effect looks — only how finely it is drawn.
+      </span>
+    </div>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-6">
+
+    <!-- Palette -->
+    <div class="border border-tron-border bg-tron-panel/50 p-4">
+      <div class="text-xs text-tron-border uppercase mb-3">&gt; Palette</div>
+      <div id="palette-stops" class="flex flex-wrap gap-2 mb-3"></div>
+      <div class="flex gap-2">
+        <button onclick="addStop()" class="tron-btn px-3 py-1 border border-tron-border text-xs hover:border-tron-cyan hover:text-tron-cyan">[+ STOP]</button>
+        <button onclick="removeStop()" class="tron-btn px-3 py-1 border border-tron-border text-xs hover:border-red-500 hover:text-red-400">[- STOP]</button>
+      </div>
+      <p class="text-xs text-tron-border/50 mt-3">
+        Circular — the last stop wraps to the first, so a scroll has no seam.
+      </p>
+    </div>
+
+    <!-- Motion -->
+    <div class="border border-tron-border bg-tron-panel/50 p-4">
+      <div class="text-xs text-tron-border uppercase mb-3">&gt; Motion</div>
+
+      <label class="block mb-3">
+        <span class="block text-xs text-tron-border uppercase mb-1">Sample_Mode <span class="normal-case text-tron-border/50">— which colour</span></span>
+        <select id="s-mode" class="w-full px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
+          <option value="fixed">fixed</option>
+          <option value="position">position</option>
+          <option value="scroll" selected>scroll</option>
+          <option value="noise">noise — LIFX Morph</option>
+          <option value="random">random — for confetti</option>
+        </select>
+      </label>
+      <div id="s-params" class="grid grid-cols-2 gap-2 mb-4"></div>
+
+      <label class="block mb-3">
+        <span class="block text-xs text-tron-border uppercase mb-1">Level_Mode <span class="normal-case text-tron-border/50">— how bright</span></span>
+        <select id="l-mode" class="w-full px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
+          <option value="solid">solid</option>
+          <option value="wave" selected>wave</option>
+          <option value="blob">blob — chase / cylon</option>
+          <option value="impulse">impulse — sparkle / confetti</option>
+          <option value="square">square — strobe</option>
+          <option value="flicker">flicker — candle</option>
+        </select>
+      </label>
+      <div id="l-params" class="grid grid-cols-2 gap-2"></div>
+    </div>
+  </div>
+
+  <!-- Output -->
+  <div class="border border-tron-border bg-tron-panel/50 p-4 mt-6">
+    <div class="flex flex-wrap items-end gap-3 mb-4">
+      <label class="block">
+        <span class="block text-xs text-tron-border uppercase mb-1">Push_To</span>
+        <select id="target" class="px-2 py-1 text-sm text-tron-cyan bg-tron-panel border border-tron-border">
+          {% for d in devices %}
+          <option value="{{ d.device_id }}">{{ (d.friendly_name or d.device_id) | upper }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button onclick="pushRecipe()" class="tron-btn px-4 py-2 border border-tron-cyan text-xs uppercase hover:bg-tron-cyan/10">[PUSH TO STRIP]</button>
+
+      <label class="block ml-auto">
+        <span class="block text-xs text-tron-border uppercase mb-1">Save_As</span>
+        <input id="save-name" placeholder="my-effect" class="px-2 py-1 text-sm text-tron-cyan bg-transparent border border-tron-border">
+      </label>
+      <button onclick="saveRecipe()" class="tron-btn px-4 py-2 border border-tron-border text-xs uppercase hover:border-tron-cyan hover:text-tron-cyan">[SAVE]</button>
+    </div>
+
+    <div id="status" class="text-xs mb-3"></div>
+
+    <details>
+      <summary class="text-xs text-tron-border uppercase cursor-pointer hover:text-tron-cyan">&gt; JSON</summary>
+      <pre id="json-out" class="text-xs text-tron-cyan/70 mt-2 overflow-x-auto"></pre>
+    </details>
+  </div>
+
+  <!-- Saved -->
+  <div class="border border-tron-border bg-tron-panel/50 p-4 mt-6">
+    <div class="text-xs text-tron-border uppercase mb-3">&gt; Saved_Effects</div>
+    <div id="saved-list" class="flex flex-wrap gap-2"><span class="text-xs text-tron-border/50">loading...</span></div>
+  </div>
+</div>
+
+<script>
+/*
+ * A deliberate mirror of runRecipe() in firmware/led_controller.
+ *
+ * The point of this page is that the numbers behave the same here as they do on
+ * the wall, so these functions are kept structurally identical to the C rather
+ * than written the way one would write them fresh in JavaScript. If one side
+ * changes, the other has to.
+ *
+ * ONE HONEST DIFFERENCE: `noise`. The device uses FastLED's inoise8, which is
+ * a specific Perlin implementation with its own gradient table. This uses a
+ * small value-noise function instead. The character matches - smooth, drifting,
+ * blobby - but the exact pattern will not. Everything else is exact.
+ */
+
+// ---- value noise, standing in for FastLED's inoise8 ----
+function hash2(x, y) {
+  let h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return h - Math.floor(h);
+}
+function smoothNoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi,        yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi),     b = hash2(xi + 1, yi);
+  const c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+const frac01 = x => x - Math.floor(x);
+
+function paletteLookup(pal, x) {
+  if (!pal.length) return [0, 0, 0];
+  if (pal.length === 1) return pal[0];
+  const f = frac01(x) * pal.length;
+  const i = Math.floor(f), m = f - i;
+  const a = pal[i % pal.length], b = pal[(i + 1) % pal.length];
+  return [a[0] + (b[0] - a[0]) * m, a[1] + (b[1] - a[1]) * m, a[2] + (b[2] - a[2]) * m];
+}
+
+function sampleAt(r, p, t, i, sparkHue) {
+  const s = r.sample || {};
+  switch (s.mode) {
+    case 'position': return p * (s.span ?? 1);
+    case 'scroll':   return p * (s.span ?? 1) + t * (s.speed ?? 0);
+    case 'noise':    return smoothNoise(p * (s.scale ?? 3), t * (s.speed ?? 0));
+    case 'random':   return sparkHue[i];
+    default:         return (s.at ?? 0) + t * (s.speed ?? 0);
+  }
+}
+
+function levelAt(r, p, t, i, spark) {
+  const l = r.level || {};
+  const min = l.min ?? 0, max = l.max ?? 1;
+  switch (l.mode) {
+    case 'wave': {
+      // detune varies the PERIOD per LED, not the phase - see docs/RECIPES.md
+      const period = 1 + (l.detune ?? 0) * (i % 5) * 0.25;
+      const phase  = t * (l.speed ?? 0.2) / period + p * (l.phase ?? 0);
+      const v      = (Math.sin(frac01(phase) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+      return min + (max - min) * v;
+    }
+    case 'blob': {
+      const sp = l.speed ?? 0.2;
+      const pos = (l.pingpong ?? true) ? Math.abs(frac01(t * sp) * 2 - 1) : frac01(t * sp);
+      const d = Math.abs(p - pos), w = l.width ?? 0.1;
+      if (d > w) {
+        const tail = (d - w) / Math.max(l.trail ?? 0.3, 0.001);
+        return tail >= 1 ? min : max * (1 - tail);
+      }
+      return max;
+    }
+    case 'impulse': return min + (max - min) * spark[i];
+    case 'square':  return frac01(t * (l.speed ?? 0.2)) < 0.5 ? max : min;
+    case 'flicker': return min + (max - min) * Math.random();
+    default:        return max;
+  }
+}
+
+// ---- state ----
+let palette = [[0,255,60],[0,200,180],[0,120,255],[40,220,140]];
+let spark = [], sparkHue = [];
+const PARAMS = {
+  sample: {
+    fixed:    [['at',0,0,1,0.01], ['speed',0,-2,2,0.01]],
+    position: [['span',1,0.1,8,0.1]],
+    scroll:   [['span',2,0.1,8,0.1], ['speed',0.05,-2,2,0.01]],
+    noise:    [['scale',3,0.2,20,0.1], ['speed',0.3,0,3,0.01]],
+    random:   [],
+  },
+  level: {
+    solid:   [['max',1,0,1,0.01]],
+    wave:    [['min',0.2,0,1,0.01], ['max',1,0,1,0.01], ['speed',0.35,0,3,0.01], ['phase',1.5,0,8,0.1], ['detune',1,0,3,0.05]],
+    blob:    [['min',0,0,1,0.01], ['max',1,0,1,0.01], ['speed',0.4,0,3,0.01], ['width',0.03,0.005,0.5,0.005], ['trail',0.25,0.01,1,0.01], ['pingpong',1,0,1,1]],
+    impulse: [['min',0,0,1,0.01], ['max',1,0,1,0.01], ['rate',0.6,0,1,0.01], ['decay',0.92,0.5,0.99,0.01]],
+    square:  [['min',0,0,1,0.01], ['max',1,0,1,0.01], ['speed',1,0,10,0.1]],
+    flicker: [['min',0.7,0,1,0.01], ['max',1,0,1,0.01]],
+  },
+};
+
+function paramBox(slot, name, def, lo, hi, step) {
+  return `<label class="block">
+    <span class="block text-xs text-tron-border uppercase mb-1">${name}</span>
+    <input type="number" data-slot="${slot}" data-name="${name}" value="${def}"
+           min="${lo}" max="${hi}" step="${step}"
+           class="w-full px-2 py-1 text-sm text-tron-cyan bg-transparent border border-tron-border">
+  </label>`;
+}
+
+function renderParams(slot) {
+  const mode = document.getElementById(slot === 'sample' ? 's-mode' : 'l-mode').value;
+  const host = document.getElementById(slot === 'sample' ? 's-params' : 'l-params');
+  host.innerHTML = PARAMS[slot][mode].map(p => paramBox(slot, ...p)).join('');
+  host.querySelectorAll('input').forEach(i => i.addEventListener('input', emitJson));
+  emitJson();
+}
+
+function renderPalette() {
+  document.getElementById('palette-stops').innerHTML = palette.map((c, i) =>
+    `<input type="color" data-stop="${i}" value="${rgbToHex(c)}" class="w-14 h-10 cursor-pointer bg-transparent border border-tron-border">`
+  ).join('');
+  document.querySelectorAll('[data-stop]').forEach(inp => {
+    inp.addEventListener('input', e => {
+      palette[+e.target.dataset.stop] = hexToRgb(e.target.value);
+      emitJson();
+    });
+  });
+  emitJson();
+}
+
+const rgbToHex = c => '#' + c.map(v => Math.round(v).toString(16).padStart(2,'0')).join('');
+const hexToRgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+const addStop = () => { if (palette.length < 8) { palette.push([255,255,255]); renderPalette(); } };
+const removeStop = () => { if (palette.length > 1) { palette.pop(); renderPalette(); } };
+
+function currentRecipe() {
+  const r = { palette: palette.map(c => c.map(Math.round)),
+              sample: { mode: document.getElementById('s-mode').value },
+              level:  { mode: document.getElementById('l-mode').value },
+              frame_ms: 20 };
+  document.querySelectorAll('[data-slot]').forEach(inp => {
+    const v = parseFloat(inp.value);
+    if (!Number.isNaN(v)) {
+      r[inp.dataset.slot][inp.dataset.name] =
+        inp.dataset.name === 'pingpong' ? !!v : v;
+    }
+  });
+  return r;
+}
+
+function emitJson() {
+  document.getElementById('json-out').textContent = JSON.stringify(currentRecipe(), null, 2);
+}
+
+// ---- the animation ----
+const canvas = document.getElementById('strip');
+const ctx = canvas.getContext('2d');
+let lastFrame = performance.now(), fpsAvg = 0;
+
+function draw(now) {
+  const r = currentRecipe();
+  const n = Math.max(1, Math.min(300, +document.getElementById('preview-count').value || 91));
+  const t = now / 1000;
+
+  if (spark.length !== n) { spark = new Array(n).fill(0); sparkHue = new Array(n).fill(0); }
+  if (r.level.mode === 'impulse') {
+    for (let i = 0; i < n; i++) spark[i] *= (r.level.decay ?? 0.92);
+    if (Math.random() < (r.level.rate ?? 0.6)) {
+      const i = Math.floor(Math.random() * n);
+      spark[i] = 1; sparkHue[i] = Math.random();
+    }
+  }
+
+  const w = canvas.width = canvas.clientWidth;
+  const cell = w / n;
+  for (let i = 0; i < n; i++) {
+    const p = n > 1 ? i / (n - 1) : 0;
+    const c = paletteLookup(r.palette, sampleAt(r, p, t, i, sparkHue));
+    const v = Math.max(0, Math.min(1, levelAt(r, p, t, i, spark)));
+    ctx.fillStyle = `rgb(${c[0]*v|0},${c[1]*v|0},${c[2]*v|0})`;
+    ctx.fillRect(i * cell, 0, Math.ceil(cell) + 1, canvas.height);
+  }
+
+  const dt = now - lastFrame; lastFrame = now;
+  fpsAvg = fpsAvg * 0.9 + (1000 / dt) * 0.1;
+  document.getElementById('fps-readout').textContent = `${fpsAvg.toFixed(0)} fps · ${n} px`;
+  requestAnimationFrame(draw);
+}
+
+// ---- server ----
+function say(msg, ok = true) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'text-xs mb-3 ' + (ok ? 'text-tron-cyan' : 'text-red-400');
+}
+
+async function pushRecipe() {
+  const id = document.getElementById('target').value;
+  if (!id) return say('No device selected', false);
+  const res = await fetch(`/studio/push/${id}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipe: currentRecipe() }),
+  });
+  say(res.ok ? 'Pushed.' : 'Push failed: ' + await res.text(), res.ok);
+}
+
+async function saveRecipe() {
+  const name = document.getElementById('save-name').value.trim();
+  if (!name) return say('Give it a name first', false);
+  const res = await fetch(`/studio/save/${encodeURIComponent(name)}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipe: currentRecipe() }),
+  });
+  say(res.ok ? `Saved as ${name}.` : 'Save failed: ' + await res.text(), res.ok);
+  loadSaved();
+}
+
+async function loadSaved() {
+  const res = await fetch('/studio/effects');
+  const data = await res.json();
+  const host = document.getElementById('saved-list');
+  if (!data.effects || !data.effects.length) {
+    host.innerHTML = '<span class="text-xs text-tron-border/50">Nothing saved yet.</span>';
+    return;
+  }
+  host.innerHTML = data.effects.map(e =>
+    `<button onclick='loadEffect(${JSON.stringify(JSON.stringify(e.recipe))})'
+       class="tron-btn px-3 py-1 border border-tron-border text-xs uppercase hover:border-tron-cyan hover:text-tron-cyan">${e.label}</button>`
+  ).join('');
+}
+
+function loadEffect(json) {
+  const r = JSON.parse(json);
+  palette = r.palette.map(c => c.slice());
+  document.getElementById('s-mode').value = r.sample?.mode || 'fixed';
+  document.getElementById('l-mode').value = r.level?.mode || 'solid';
+  renderParams('sample'); renderParams('level'); renderPalette();
+  // Apply the stored numbers over the defaults the mode just installed.
+  document.querySelectorAll('[data-slot]').forEach(inp => {
+    const v = r[inp.dataset.slot]?.[inp.dataset.name];
+    if (v !== undefined) inp.value = typeof v === 'boolean' ? (v ? 1 : 0) : v;
+  });
+  emitJson();
+}
+
+document.getElementById('s-mode').addEventListener('change', () => renderParams('sample'));
+document.getElementById('l-mode').addEventListener('change', () => renderParams('level'));
+document.getElementById('preview-count').addEventListener('input', emitJson);
+
+renderPalette();
+renderParams('sample');
+renderParams('level');
+loadSaved();
+requestAnimationFrame(draw);
+</script>
+{% endblock %}

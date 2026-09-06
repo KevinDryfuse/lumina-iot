@@ -108,6 +108,44 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
 
 # ===================
+# Effect studio
+# ===================
+# The studio talks JSON rather than htmx: it is a live canvas, not a page that
+# swaps fragments, and the recipe being edited only becomes a document worth
+# naming once it looks right on the wall.
+@app.get("/studio", response_class=HTMLResponse)
+async def studio(request: Request, db: Session = Depends(get_db)):
+    """Tune an effect against a browser preview of the device's own maths."""
+    user = get_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    return templates.TemplateResponse(
+        "studio.html",
+        {"request": request, "user": user,
+         "devices": await api_client.get_all_devices()},
+    )
+
+
+@app.get("/studio/effects")
+async def studio_effects(user: User = Depends(require_auth)):
+    """Stored effects, for the studio's saved list."""
+    return await api_client.list_effects()
+
+
+@app.post("/studio/push/{device_id}")
+async def studio_push(device_id: str, body: dict, user: User = Depends(require_auth)):
+    """Send the recipe being edited to a strip without storing it."""
+    return await api_client.send_recipe(device_id, body.get("recipe"))
+
+
+@app.post("/studio/save/{name}")
+async def studio_save(name: str, body: dict, user: User = Depends(require_auth)):
+    """Store the recipe being edited under a name."""
+    return await api_client.save_effect(name, body.get("recipe"))
+
+
+# ===================
 # Device Control (HTMX endpoints — calls API over HTTP)
 # ===================
 @app.get("/devices/{device_id}/card", response_class=HTMLResponse)

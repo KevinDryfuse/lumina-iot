@@ -113,6 +113,36 @@ async def list_firmware() -> dict:
         return resp.json()
 
 
+async def list_effects() -> dict:
+    """Stored effects."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(f"{API_URL}/effects")
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def save_effect(name: str, recipe: dict, label: str = None,
+                      category: str = "custom") -> dict:
+    """Create or replace a stored effect."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.put(
+            f"{API_URL}/effects/{name}",
+            json={"recipe": recipe, "label": label, "category": category},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def send_recipe(device_id: str, recipe: dict) -> dict:
+    """Send a recipe straight to a device without storing it."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            f"{API_URL}/devices/{device_id}/recipe", json={"recipe": recipe},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def set_settings(device_id: str, r: int, g: int, b: int, brightness: int) -> dict:
     """Set device color and brightness via the API (two calls)."""
     async with httpx.AsyncClient(timeout=10) as client:

@@ -7,7 +7,7 @@ Uses SQLAlchemy with PostgreSQL.
 import os
 from datetime import datetime
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, text, JSON
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://lumina:changeme@localhost:5432/lumina")
@@ -84,6 +84,32 @@ class DeviceState(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     device = relationship("Device", back_populates="state")
+
+
+class Effect(Base):
+    """An effect stored as data rather than compiled into the firmware.
+
+    See docs/RECIPES.md for the payload shape. The recipe column is the payload
+    verbatim - deliberately not decomposed into columns, because the format will
+    grow and the device stores the same JSON it was sent.
+    """
+    __tablename__ = "effects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(50), unique=True, nullable=False, index=True)
+    label = Column(String(50), nullable=True)
+    category = Column(String(20), default="custom")
+    recipe = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def as_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "label": self.label or self.name.upper(),
+            "category": self.category or "custom",
+            "recipe": self.recipe,
+        }
 
 
 def get_db():

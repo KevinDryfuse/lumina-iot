@@ -164,6 +164,37 @@ async def ota(device_id: str, url: str = None, file: str = None):
     return device_service.send_ota(device_id, url)
 
 
+# ---- effects stored as data (see docs/RECIPES.md) ----
+@app.get("/effects")
+async def list_effects():
+    """Every stored effect."""
+    return {"effects": device_service.list_effects()}
+
+
+@app.put("/effects/{name}")
+async def save_effect(name: str, body: dict):
+    """Create or replace a stored effect. Body: {recipe, label?, category?}."""
+    return device_service.save_effect(
+        name, body.get("recipe"), body.get("label"), body.get("category", "custom"))
+
+
+@app.delete("/effects/{name}")
+async def delete_effect(name: str):
+    """Remove a stored effect."""
+    return device_service.delete_effect(name)
+
+
+@app.post("/devices/{device_id}/recipe")
+async def send_recipe(device_id: str, body: dict = None, name: str = None):
+    """Send a recipe to a device, either stored by name or inline in the body."""
+    if name:
+        return device_service.send_stored_effect(device_id, name)
+    if not body or not body.get("recipe"):
+        raise HTTPException(status_code=400, detail="name, or a recipe body")
+    return device_service.send_recipe(
+        device_id, body["recipe"], body.get("effect", "recipe"))
+
+
 @app.post("/devices/{device_id}/effect")
 async def set_effect(device_id: str, effect: str):
     """Set device effect."""
