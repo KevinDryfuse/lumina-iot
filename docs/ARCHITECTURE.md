@@ -175,7 +175,7 @@ the format can grow without invalidating what is already stored. The raw JSON
 matters on the server side too: `effects.recipe` is a JSON column holding the
 same payload, not decomposed into columns.
 
-`api/src/effects_seed.py` inserts the eighteen built-ins on start-up, and only
+`api/src/effects_seed.py` inserts the 37 built-ins on start-up, and only
 if missing. Never updating in place is what makes it safe to hand-tune one of
 them in the studio and redeploy.
 

@@ -77,7 +77,7 @@ bright it is. The format, the modes and the reasoning behind them are in
 [docs/RECIPES.md](docs/RECIPES.md), which is the single source of truth for the
 payload both sides have to agree on.
 
-Eighteen built-ins are seeded into Postgres on start-up: the twelve that used to
+37 built-ins are seeded into Postgres on start-up: the twelve that used to
 be compiled, translated into recipes, plus six theme palettes riding the same
 motions. Seeding is insert-only, so a recipe tuned by hand in the studio
 survives every redeploy; deleting the row restores the original on the next

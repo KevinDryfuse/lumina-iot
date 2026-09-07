@@ -19,7 +19,7 @@ api/src/            The only service that touches MQTT, Postgres or firmware ima
   services.py       Every device state mutation goes through here
   mqtt.py           Broker client, announce handling, in-memory device registry
   db.py             SQLAlchemy models and init_db()
-  effects_seed.py   The eighteen built-in recipes
+  effects_seed.py   The 37 built-in recipes
 ui/src/             HTML only; calls the API over HTTP, knows nothing of MQTT
   main.py           Session auth, HTMX routes, /studio
   api_client.py     The one place the UI talks to the API
@@ -30,7 +30,12 @@ firmware/
   images/           .bin files staged for OTA; bind-mounted into the API, never committed
 mcp-server/         MCP tools over the same API, for driving lights from Claude
 mosquitto/          Broker config
-docs/               RECIPES.md, ARCHITECTURE.md
+docs/
+  RECIPES.md        The effect format. A contract between api/ and the sketch
+  ARCHITECTURE.md   How the pieces fit, from a click to a lit LED
+  ADDING-A-STRIP.md Bring-up runbook: wiring, power sizing, the first flash
+  TROUBLESHOOTING.md  Symptoms, and what is actually happening underneath them
+  RECOVERY.md       Rebuilding the Pi. What the SD card holds that git does not
 ```
 
 Four compose services — `mosquitto` (1883), `postgres` (5432), `api` (8001),
