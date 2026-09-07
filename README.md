@@ -145,16 +145,25 @@ exist to keep a household out of each other's lights rather than to keep anyone
 off the network. Do not port-forward the API.
 
 ## Known seams
-
 `STRIP_PINS` instantiates every strip as GRB, so a non-GRB colour order is
 honoured by permuting the frame buffer around `FastLED.show()` rather than by
-the driver — order is a third template parameter, and folding it into that
-table would multiply it by six. Correct, but it costs two passes over the
-buffer per frame on any strip that is not GRB. The MCP server in
-`mcp-server/` carries its own hardcoded list of effect names, so anything added
-since is invisible to it. And there is no migration tool — columns added to an
-existing table are applied by hand in `init_db()` with `ADD COLUMN IF NOT
-EXISTS`.
+the driver — order is a third template parameter, and folding it into that table
+would multiply it by six. Correct, but it costs two passes over the buffer per
+frame on any strip that is not GRB, and no strip here is.
+
+There is no migration tool: columns added to an existing table are applied by
+hand in `init_db()` with `ADD COLUMN IF NOT EXISTS`.
+
+Firmware images contain the WiFi credentials, because `secrets.h` is compiled
+in. They are served behind a token for that reason, but the credentials are
+still in the image — anyone who obtains a `.bin` by any route has them. Moving
+them into NVS would remove the problem rather than guard it; nothing has needed
+it badly enough yet.
+
+There is no working OTA rollback. It is implemented, it was tested with a
+deliberately broken image, and the strip crash-looped until a USB cable was
+attached. See the comment above `verifyRollbackLater()` — the desk strip is the
+bench because that rule is load-bearing.
 
 ## Hardware
 

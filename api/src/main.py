@@ -191,7 +191,25 @@ async def set_config(device_id: str, led_count: int = None, pin: int = None,
 
 @app.post("/devices/{device_id}/ota")
 async def ota(device_id: str, url: str = None, file: str = None):
-    """Install firmware, named either by full URL or by a staged filename."""
+    """Install firmware from a staged image.
+
+    A full `url` is accepted only if it points at this server's own /fw. The
+    parameter used to take anything, which was consistent with "the trust
+    boundary is the LAN" right up until the images went behind a token - after
+    which it was the way around that token: point a strip at your own web
+    server and it fetches and runs whatever is there, no credential needed.
+
+    Restricting it rather than removing it, because the tunnel and any future
+    second host still need the full form.
+    """
+    if url:
+        if not FIRMWARE_BASE_URL or not url.startswith(f"{FIRMWARE_BASE_URL}/fw/"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"url must be under {FIRMWARE_BASE_URL}/fw/ - a strip "
+                       f"will run whatever it is pointed at, so it is only "
+                       f"pointed at images this server is serving",
+            )
     if not url:
         if not file:
             raise HTTPException(status_code=400, detail="url or file required")
