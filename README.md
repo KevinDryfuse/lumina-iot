@@ -44,11 +44,15 @@ no way to be told a new one afterwards.
 
 ## Adding a strip
 
-Flash `firmware/led_controller/led_controller.ino` once, with WiFi and broker
-details in `secrets.h` (copy `secrets.h.example`). Everything after that is done
-from the UI: the device announces itself on `devices/announce`, appears on the
-dashboard, and the Hardware_Config panel on its card sets LED count, data pin,
-chipset and colour order. Applying it restarts the strip, which the form says
+**[docs/ADDING-A-STRIP.md](docs/ADDING-A-STRIP.md) is the runbook** — wiring,
+power sizing, the partition scheme that is easy to miss, and what to do when it
+does not show up.
+
+In short: flash `firmware/led_controller/led_controller.ino` once, with WiFi and
+broker details in `secrets.h` (copy `secrets.h.example`). Everything after that
+is done from the UI: the device announces itself on `devices/announce`, appears
+on the dashboard, and the Hardware_Config panel on its card sets LED count, data
+pin, chipset and colour order. Applying it restarts the strip, which the form says
 out loud — FastLED cannot un-register a controller, so re-running `addLeds()` in
 a live sketch would leave the old one driving the old pin.
 
@@ -151,6 +155,7 @@ Wiring detail and library versions are in
   between a click and a lit LED
 - [docs/RECIPES.md](docs/RECIPES.md) — the effect format
 - [CLAUDE.md](CLAUDE.md) — orientation for agents working in this repository
+| [docs/ADDING-A-STRIP.md](docs/ADDING-A-STRIP.md) | Adding a new strip, start to finish |
 
 ## License
 
