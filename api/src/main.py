@@ -61,6 +61,11 @@ app = FastAPI(
 FIRMWARE_DIR = os.getenv("FIRMWARE_DIR", "/firmware")
 os.makedirs(FIRMWARE_DIR, exist_ok=True)
 
+# Where a DEVICE should fetch firmware from. Not derivable here: the API runs on
+# a bridged Docker network, so it only knows its own 172.x address, and the URL
+# has to be one the strips can reach on the LAN.
+FIRMWARE_BASE_URL = os.getenv("FIRMWARE_BASE_URL", "").rstrip("/")
+
 # Shared with FIRMWARE_TOKEN in the firmware's secrets.h.
 FIRMWARE_TOKEN = os.getenv("FIRMWARE_TOKEN", "")
 

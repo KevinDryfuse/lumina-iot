@@ -41,7 +41,7 @@
 // ===================
 // Bump on every build that gets published for OTA. Reported in the announce
 // payload, which is how the server knows which strips are behind.
-#define FW_VERSION 10
+#define FW_VERSION 11
 
 // ===================
 // LED Configuration - runtime, not compile time
