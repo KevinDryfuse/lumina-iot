@@ -64,6 +64,16 @@ def set_brightness(device_id: str, brightness: int) -> dict:
 # to be sent as one.
 COMPILED_EFFECTS = {"none", "fire"}
 
+# What was compiled in before the recipe engine landed in FW_VERSION 5. A strip
+# older than that genuinely can run these by name, and refusing them would break
+# a device that works - so they are allowed, but only for a device that reports
+# a firmware old enough to have them.
+LEGACY_EFFECTS = {
+    "rainbow", "breathing", "chase", "sparkle", "confetti", "cylon",
+    "strobe", "ocean", "aurora", "candle", "christmas", "usa",
+}
+RECIPE_ENGINE_FW = 5
+
 
 def set_effect(device_id: str, effect: str) -> dict:
     """Set one of the compiled effects by name.
@@ -77,6 +87,13 @@ def set_effect(device_id: str, effect: str) -> dict:
     A stored effect belongs on /recipe, which sends the palette with it.
     """
     get_device(device_id)
+
+    fw = devices[device_id].get("fw_version")
+    pre_recipe = fw is None or fw < RECIPE_ENGINE_FW
+    if pre_recipe and effect in LEGACY_EFFECTS:
+        mqtt_client.send_command(device_id, {"effect": effect})
+        devices[device_id]["effect"] = effect
+        return _with_online(devices[device_id])
 
     if effect not in COMPILED_EFFECTS:
         db = SessionLocal()

@@ -85,10 +85,15 @@ Board: **ESP32 Dev Module**.
 
 Plug the board into your computer and upload.
 
-**This first flash has to be by cable and there is no way around it.** Over-the-
-air updating arrived in the same firmware you are installing, so a board that
-has never had it cannot receive it. Every update after this one is over the
-network.
+**This first flash has to be by cable and there is no way around it.** A board
+with no Lumina firmware on it has nothing listening for an update; over-the-air
+is something the running firmware does, not something done to a bare board.
+Every update after this one is over the network.
+
+(The same applies to a board still running the original pre-versioned firmware,
+which reports no version at all. Over-the-air arrived in `FW_VERSION 2`, so
+anything from v2 onward can be updated remotely — including strips predating the
+recipe engine, which landed in v5.)
 
 If you would rather not use the Arduino IDE:
 
