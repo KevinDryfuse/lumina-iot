@@ -375,14 +375,26 @@ async function loadSaved() {
     host.innerHTML = '<span class="text-xs text-tron-dim/75">Nothing saved yet.</span>';
     return;
   }
-  host.innerHTML = data.effects.map(e =>
-    `<button onclick='loadEffect(${JSON.stringify(JSON.stringify(e.recipe))})'
-       class="tron-btn px-3 py-1 border border-tron-border text-xs uppercase hover:border-tron-cyan hover:text-tron-cyan">${e.label}</button>`
-  ).join('');
+  /*
+   * Built as DOM nodes, not as an HTML string.
+   *
+   * The effects table is writable by anything on this LAN with no credentials,
+   * so a label is attacker-controlled text. Interpolated into innerHTML it ran;
+   * and the recipe JSON sat inside a single-quoted onclick, which any
+   * apostrophe in it broke out of. textContent and a closure have neither
+   * problem, and the recipe never becomes markup at all.
+   */
+  host.textContent = '';
+  for (const e of data.effects) {
+    const b = document.createElement('button');
+    b.className = 'tron-btn px-3 py-1 border border-tron-border text-xs uppercase hover:border-tron-cyan hover:text-tron-cyan';
+    b.textContent = e.label;
+    b.addEventListener('click', () => applyRecipe(e.recipe));
+    host.appendChild(b);
+  }
 }
 
-function loadEffect(json) {
-  const r = JSON.parse(json);
+function applyRecipe(r) {
   palette = r.palette.map(c => c === 'device' ? 'device' : c.slice());
   document.getElementById('s-mode').value = r.sample?.mode || 'fixed';
   document.getElementById('l-mode').value = r.level?.mode || 'solid';

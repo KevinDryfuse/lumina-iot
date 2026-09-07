@@ -19,8 +19,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-lumina}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-lumina}
-    ports:
-      - "5432:5432"
+    # Deliberately NOT published. api and ui reach it as postgres:5432 on the
+    # compose network; publishing it put a database whose password defaults to
+    # "changeme" on the LAN, holding the login hashes and the effects table that
+    # the UI renders. Uncomment only to run psql from the host, and put it back.
+    # ports:
+    #   - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -69,7 +73,7 @@ services:
     container_name: lumina-ui
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lumina}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-lumina}
-      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env - see ui/src/auth.py}
       API_URL: http://api:8001
     ports:
       - "8000:8000"

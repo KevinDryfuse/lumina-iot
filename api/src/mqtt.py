@@ -64,10 +64,26 @@ class MQTTClient:
             print(f"Invalid JSON on topic {topic}")
             return
 
-        if topic == "devices/announce":
-            self._handle_device_announce(payload)
-        elif topic.startswith("lights/") and topic.endswith("/state"):
-            self._handle_state_update(payload)
+        #
+        # Never let a handler escape.
+        #
+        # paho re-raises out of on_message and its loop thread is try/finally
+        # only, so one bad payload killed the thread outright - and because
+        # on_disconnect never fired, `connected` stayed True and /health went on
+        # saying so. Publishes then went out on a dead socket until the broker
+        # dropped it, after which nothing reconnected and no announce or state
+        # message was ever processed again.
+        #
+        # Any device on this LAN can publish to the broker, so this needs no
+        # firmware bug to trigger: a single `{"color":"red"}` was enough.
+        #
+        try:
+            if topic == "devices/announce":
+                self._handle_device_announce(payload)
+            elif topic.startswith("lights/") and topic.endswith("/state"):
+                self._handle_state_update(payload)
+        except Exception as e:
+            print(f"handler failed for {topic}: {type(e).__name__}: {e}")
 
     def _handle_device_announce(self, payload: dict):
         """Handle device announcement (new device or reconnection)."""
@@ -114,7 +130,8 @@ class MQTTClient:
             else:
                 device.last_seen = datetime.utcnow()
 
-            device.fw_version = payload.get("fw")
+            fw = payload.get("fw")
+            device.fw_version = fw if isinstance(fw, int) else None
 
             #
             # Reconcile hardware configuration.
@@ -171,7 +188,7 @@ class MQTTClient:
             devices[device_id]["power"] = payload["power"]
         if "brightness" in payload:
             devices[device_id]["brightness"] = payload["brightness"]
-        if "color" in payload:
+        if isinstance(payload.get("color"), dict):
             devices[device_id]["color"] = payload["color"]
         if "effect" in payload:
             devices[device_id]["effect"] = payload["effect"]

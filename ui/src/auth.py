@@ -14,7 +14,17 @@ from sqlalchemy.orm import Session
 
 from .db import get_db, User
 
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+if not SECRET_KEY or SECRET_KEY == "change-this-in-production":
+    # Refuse rather than default. The fallback that used to live here is in this
+    # repository, so anyone could mint a valid lumina_session cookie for user 1
+    # and walk past the login - the second of the two gates the docs describe in
+    # front of the tunnel. Nothing warned, because it worked perfectly.
+    raise RuntimeError(
+        "SECRET_KEY is unset or still the placeholder. Generate one with "
+        "`python -c 'import secrets; print(secrets.token_urlsafe(32))'` and put "
+        "it in .env - session cookies are forgeable without it."
+    )
 SESSION_COOKIE_NAME = "lumina_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
 

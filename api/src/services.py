@@ -18,6 +18,13 @@ from .mqtt import mqtt_client, devices
 # reasonable definition of gone.
 OFFLINE_AFTER_S = 185
 
+# Must match STRIP_PINS in firmware/led_controller/led_controller.ino. Kept here
+# rather than trusted from the form, because the consequence of a wrong pin is a
+# strip that reboots every few seconds until someone catches it.
+SUPPORTED_PINS = {2, 4, 5, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33}
+SUPPORTED_CHIPSETS = {"WS2815", "WS2812B", "WS2812", "WS2811", "SK6812"}
+SUPPORTED_ORDERS = {"GRB", "RGB", "BRG", "RBG", "GBR", "BGR"}
+
 
 def _with_online(d: dict) -> dict:
     """Add a freshly computed `online` to a device record.
@@ -47,6 +54,9 @@ def get_device(device_id: str) -> dict:
 def set_color(device_id: str, r: int, g: int, b: int) -> dict:
     """Set device color. Returns updated device dict."""
     get_device(device_id)
+    for name, v in (("r", r), ("g", g), ("b", b)):
+        if not 0 <= v <= 255:
+            raise HTTPException(status_code=400, detail=f"{name} must be 0-255")
     mqtt_client.send_command(device_id, {"color": {"r": r, "g": g, "b": b}})
     devices[device_id]["color"] = {"r": r, "g": g, "b": b}
     return _with_online(devices[device_id])
@@ -55,6 +65,10 @@ def set_color(device_id: str, r: int, g: int, b: int) -> dict:
 def set_brightness(device_id: str, brightness: int) -> dict:
     """Set device brightness (0-100). Returns updated device dict."""
     get_device(device_id)
+    # Documented as 0-100 and enforced nowhere. 1000 maps to 2550, truncates to
+    # 246 in the firmware, and lands the strip DIMMER than 100 with a 200 back.
+    if not 0 <= brightness <= 100:
+        raise HTTPException(status_code=400, detail="brightness must be 0-100")
     mqtt_client.send_command(device_id, {"brightness": brightness})
     devices[device_id]["brightness"] = brightness
     return _with_online(devices[device_id])
@@ -161,10 +175,30 @@ def set_config(device_id: str, led_count: int | None = None, pin: int | None = N
                 raise HTTPException(status_code=400, detail="led_count must be 1-300")
             db_device.led_count = led_count
         if pin is not None:
+            # An unsupported pin bricks a strip into a reboot loop, and the form
+            # offers 0-39 while only these eighteen are instantiated. The loop:
+            # the device stores the bad pin, fails to init, falls back to pin 5
+            # in RAM ONLY, announces 5, the server sees 5 != 15 and sends 15
+            # back, the device sees a change and restarts. Forever, every few
+            # seconds, recoverable only by racing it or with a cable.
+            if pin not in SUPPORTED_PINS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"pin {pin} is not one of the supported pins "
+                           f"{sorted(SUPPORTED_PINS)} - the firmware only "
+                           f"instantiates those, and an unsupported one leaves "
+                           f"the strip restarting in a loop",
+                )
             db_device.led_pin = pin
         if led_type is not None:
+            if led_type not in SUPPORTED_CHIPSETS:
+                raise HTTPException(status_code=400,
+                    detail=f"unknown chipset {led_type}")
             db_device.led_type = led_type
         if order is not None:
+            if order not in SUPPORTED_ORDERS:
+                raise HTTPException(status_code=400,
+                    detail=f"unknown colour order {order}")
             db_device.led_order = order
 
         db.commit()

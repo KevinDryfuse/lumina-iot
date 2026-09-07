@@ -205,7 +205,9 @@
                     ? 'border-tron-cyan bg-tron-dark text-tron-cyan'
                     : 'border-red-500 bg-tron-dark text-red-400'
             } font-mono text-sm shadow-tron`;
-            toast.innerHTML = `> ${message}`;
+            /* textContent: the message embeds a device's friendly_name, which anything
+           on the LAN can set through the unauthenticated API. */
+        toast.textContent = `> ${message}`;
             container.appendChild(toast);
 
             setTimeout(() => {
