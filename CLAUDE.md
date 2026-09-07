@@ -103,10 +103,13 @@ the `.bin` in `firmware/images/` under a name that says which version it is.
 `.bin` files are gitignored on purpose.
 
 **Test on the desk strip first.** An image that boots into a crash loop stays
-there: rollback is compiled into the bootloader, but the Arduino core marks a
-pending image valid during `initArduino()`, before `setup()` runs. Nothing that
-fails after that point is recoverable over the air. Strips that need a ladder
-only get builds that have already run on the bench.
+there. The deferred-rollback path is implemented — the sketch overrides
+`verifyRollbackLater()` so the core does not mark a pending image valid inside
+`initArduino()`, and `confirmOta()` accepts it only once MQTT is up or a
+two-minute deadline passes — and it was tested on 2026-09-06 and did not work.
+A deliberately broken image crash-looped on the desk strip until a USB cable was
+attached. Nothing that fails after boot is recoverable over the air. Strips that
+need a ladder only get builds that have already run on the bench.
 
 Adding support for a new data pin means adding a line to the `STRIP_PINS` macro.
 It is brute force because FastLED takes pin and chipset as template parameters;

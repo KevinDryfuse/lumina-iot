@@ -41,7 +41,7 @@
 // ===================
 // Bump on every build that gets published for OTA. Reported in the announce
 // payload, which is how the server knows which strips are behind.
-#define FW_VERSION 11
+#define FW_VERSION 12
 
 // ===================
 // LED Configuration - runtime, not compile time
@@ -63,6 +63,9 @@ CRGB leds[MAX_LEDS];
 
 int    numLeds  = DEFAULT_COUNT;
 int    ledPin   = DEFAULT_PIN;
+/* True when ledPin is a fallback and NVS holds something else. */
+bool   g_pinFallback = false;
+int    g_storedPin = DEFAULT_PIN;
 String ledType  = DEFAULT_TYPE;
 String ledOrder = DEFAULT_ORDER;
 bool   ledsReady = false;
@@ -297,6 +300,7 @@ void loadConfig() {
   prefs.begin("lumina", true);
   numLeds  = prefs.getInt("count",  DEFAULT_COUNT);
   ledPin   = prefs.getInt("pin",    DEFAULT_PIN);
+  g_storedPin = ledPin;
   ledType  = prefs.getString("type",  DEFAULT_TYPE);
   ledOrder = prefs.getString("order", DEFAULT_ORDER);
   prefs.end();
@@ -1034,7 +1038,9 @@ void announceDevice() {
    * server has no record of is how a newly built strip gets registered, and how
    * a mismatch gets noticed instead of silently persisting. */
   doc["config"]["led_count"] = numLeds;
-  doc["config"]["pin"]       = ledPin;
+  /* The STORED pin, not the running one. A device that reports a value it was
+   * never given is a device arguing with its own record. */
+  doc["config"]["pin"]       = g_pinFallback ? g_storedPin : ledPin;
   doc["config"]["type"]      = ledType;
   doc["config"]["order"]     = ledOrder;
 
@@ -1191,10 +1197,21 @@ void setup() {
   loadConfig();
   ledsReady = applyLedConfig();
   if (!ledsReady) {
-    /* An unusable pin would otherwise mean a device with no status indicator
-     * and no way to say why. Fall back to the default so it can at least boot,
-     * announce itself and be reconfigured over the air. */
-    Serial.println("Falling back to default pin so the strip can still report in");
+    /*
+     * An unusable pin would otherwise mean a device with no status indicator
+     * and no way to say why, so fall back to the default and carry on.
+     *
+     * The fallback is RAM only and NVS keeps what it was told - see
+     * announceDevice(), which reports the stored value rather than this one.
+     * Announcing the fallback instead used to start a reboot loop: the server
+     * saw a device reporting 5 against a stored 15, sent 15 back, the device
+     * saw a change, saved and restarted, and went round again every few
+     * seconds. The server now rejects unsupported pins, but a device should
+     * not be able to argue with its own configuration regardless.
+     */
+    Serial.print("Configured pin "); Serial.print(ledPin);
+    Serial.println(" is unusable - running on the default, config unchanged");
+    g_pinFallback = true;
     ledPin = DEFAULT_PIN;
     ledsReady = applyLedConfig();
   }

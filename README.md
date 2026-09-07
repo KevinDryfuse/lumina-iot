@@ -114,11 +114,23 @@ while it does, and reboots into the new image. `FIRMWARE_BASE_URL` has to be
 configured rather than detected: the API sits on a bridged Docker network and
 knows only its own 172.x address, which no ESP32 on the LAN can reach.
 
-**An image that boots into a crash loop stays there.** The bootloader's rollback
-support is compiled in, but the Arduino core marks a pending image valid during
-`initArduino()`, before `setup()` ever runs, so nothing that fails after that
-point is rolled back. The desk strip (`D4EC67C8`) is the bench: a build proves
-itself there before it goes anywhere that needs a ladder.
+**An image that boots into a crash loop stays there.** Not for want of trying.
+The bootloader's rollback support is compiled in, and the sketch takes the
+decision back from the Arduino core — which would otherwise mark a pending image
+valid inside `initArduino()`, before `setup()` ever runs — by overriding
+`verifyRollbackLater()`. The image is only confirmed once the strip has proved
+itself by reaching the broker, or after a two-minute deadline so that a broker
+outage is not mistaken for a bad build.
+
+It still does not roll back. Tested on 2026-09-06: a deliberately broken image
+was installed over the air on the desk strip, panicked, reset, and went on doing
+that until a USB cable was attached. Every documented precondition was in place,
+so the failure is somewhere in the chain below this repository and is not
+currently understood. Treat OTA as one-way.
+
+The desk strip (`D4EC67C8`) is the bench, and that rule is the only thing
+standing between a bad build and a ladder: a build proves itself there before it
+goes anywhere that needs one.
 
 `.bin` files are deliberately not committed. They are staged and served, not
 versioned.
@@ -134,9 +146,11 @@ off the network. Do not port-forward the API.
 
 ## Known seams
 
-Colour order is stored, reported and offered as a dropdown, but the strip is
-always driven as GRB: folding order into `STRIP_PINS` would triple a table that
-exists for a setting no strip here has yet needed to change. The MCP server in
+`STRIP_PINS` instantiates every strip as GRB, so a non-GRB colour order is
+honoured by permuting the frame buffer around `FastLED.show()` rather than by
+the driver — order is a third template parameter, and folding it into that
+table would multiply it by six. Correct, but it costs two passes over the
+buffer per frame on any strip that is not GRB. The MCP server in
 `mcp-server/` carries its own hardcoded list of effect names, so anything added
 since is invisible to it. And there is no migration tool — columns added to an
 existing table are applied by hand in `init_db()` with `ADD COLUMN IF NOT

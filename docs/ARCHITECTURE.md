@@ -214,11 +214,27 @@ worked. On success the device reboots inside `update()` and never returns; on
 failure it reconnects, publishes the reason, and flashes red.
 
 The default 4 MB partition table already carries two app slots, so a failed
-*download* leaves the running firmware untouched. A bad *image* is a different
-matter: rollback is compiled into the bootloader, but the Arduino core's
-`initArduino()` marks a pending image valid before `setup()` runs, so a build
-that crashes after that point is never rolled back. Hence the bench rule —
-prove a build on the desk strip first.
+*download* leaves the running firmware untouched — nothing has been switched.
+
+A bad *image* is a different matter, and the honest answer is that it is not
+covered. The mechanism that should cover it is all present: rollback is compiled
+into the bootloader, and the sketch overrides the core's weak
+`verifyRollbackLater()` to return true, which stops `initArduino()` from marking
+a freshly written image valid before `setup()` has run. The image stays
+`ESP_OTA_IMG_PENDING_VERIFY` until `confirmOta()` accepts it, which happens when
+MQTT connects — proof that WiFi came up, the LEDs initialised, NVS was readable
+and the broker answered — or after `OTA_CONFIRM_TIMEOUT_MS` (120 s), so that
+someone else's broker outage cannot roll back a perfectly good build.
+
+Tested on 2026-09-06, it did not work. A deliberately broken image — a null
+dereference in `setup()` — was installed over the air on the desk strip; it
+panicked and reset in a loop indefinitely, and the previous image was never
+restored. The evidence was destroyed by the USB recovery. The code stays,
+because it is the documented approach, costs nothing, and is where a future
+attempt should start. Nothing should be relied on it.
+
+Hence the bench rule — prove a build on the desk strip first. It is load
+bearing, not tidy.
 
 ---
 
