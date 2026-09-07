@@ -9,8 +9,11 @@ from contextlib import asynccontextmanager
 
 import os
 
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
+import base64
+import secrets
+
+from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import FileResponse
 
 from .db import init_db, SessionLocal, Device, Effect
 from .effects_seed import seed_effects
@@ -57,18 +60,39 @@ app = FastAPI(
 # the API has no authentication at all - and it is not made worse by this.
 FIRMWARE_DIR = os.getenv("FIRMWARE_DIR", "/firmware")
 os.makedirs(FIRMWARE_DIR, exist_ok=True)
-app.mount("/fw", StaticFiles(directory=FIRMWARE_DIR), name="firmware")
+
+# Shared with FIRMWARE_TOKEN in the firmware's secrets.h.
+FIRMWARE_TOKEN = os.getenv("FIRMWARE_TOKEN", "")
 
 
-# Where a DEVICE should fetch firmware from. Not derivable here: the API runs on
-# a bridged Docker network, so it only knows its own 172.x address, and the URL
-# has to be one the strips can reach on the LAN.
-FIRMWARE_BASE_URL = os.getenv("FIRMWARE_BASE_URL", "").rstrip("/")
+def _firmware_auth(authorization: str | None):
+    """Guard the firmware routes.
+
+    These are the one part of this API that is NOT covered by "the trust
+    boundary is the LAN". Every other route controls lights; these hand out an
+    image with the WiFi SSID and password compiled into it, recoverable with
+    `strings`. That is the key to the network the boundary itself rests on, so
+    a foothold on a guest device or a compromised bulb should not be able to
+    read it.
+
+    Basic auth because that is what HTTPUpdate offers on the device side.
+    """
+    if not FIRMWARE_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="FIRMWARE_TOKEN is not set, so firmware is not being served",
+        )
+    expected = "Basic " + base64.b64encode(
+        f"ota:{FIRMWARE_TOKEN}".encode()).decode()
+    if not authorization or not secrets.compare_digest(authorization, expected):
+        raise HTTPException(status_code=401, detail="firmware requires the token",
+                            headers={"WWW-Authenticate": 'Basic realm="firmware"'})
 
 
 @app.get("/firmware")
-async def list_firmware():
+async def list_firmware(authorization: str = Header(None)):
     """Firmware images staged for OTA, newest first."""
+    _firmware_auth(authorization)
     items = []
     for name in os.listdir(FIRMWARE_DIR):
         if not name.endswith(".bin"):
@@ -83,6 +107,18 @@ async def list_firmware():
         })
     items.sort(key=lambda i: i["modified"], reverse=True)
     return {"base_url": FIRMWARE_BASE_URL or None, "images": items}
+
+
+@app.get("/fw/{name}")
+async def get_firmware(name: str, authorization: str = Header(None)):
+    """Serve one firmware image to a device that knows the token."""
+    _firmware_auth(authorization)
+    if "/" in name or "\\" in name or not name.endswith(".bin"):
+        raise HTTPException(status_code=400, detail="bad firmware filename")
+    path = os.path.join(FIRMWARE_DIR, name)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="no such image")
+    return FileResponse(path, media_type="application/octet-stream")
 
 
 @app.get("/health")

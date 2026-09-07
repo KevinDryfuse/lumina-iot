@@ -41,7 +41,7 @@
 // ===================
 // Bump on every build that gets published for OTA. Reported in the announce
 // payload, which is how the server knows which strips are behind.
-#define FW_VERSION 9
+#define FW_VERSION 10
 
 // ===================
 // LED Configuration - runtime, not compile time
@@ -333,17 +333,17 @@ void showStatus(CRGB color) {
     leds[i].fadeToBlackBy(255 - pulse);
   }
   FastLED.setBrightness(255);
-  FastLED.show();
+  showStrip();
 }
 
 void flashGreen() {
   for (int i = 0; i < 3; i++) {
     fill_solid(leds, 5, CRGB::Green);
     FastLED.setBrightness(255);
-    FastLED.show();
+    showStrip();
     delay(150);
     fill_solid(leds, 5, CRGB::Black);
-    FastLED.show();
+    showStrip();
     delay(150);
   }
 }
@@ -354,7 +354,7 @@ void flashGreen() {
 void updateLeds() {
   fill_solid(leds, numLeds, CRGB(currentR, currentG, currentB));
   FastLED.setBrightness(map(currentBrightness, 0, 100, 0, 255));
-  FastLED.show();
+  showStrip();
 }
 
 // ===================
@@ -449,6 +449,15 @@ static void applyOrder(CRGB &c, uint8_t o, bool forward) {
   }
 }
 
+/*
+ * Colour order applies to EVERY path, not just the effects.
+ *
+ * showStatus(), flashGreen() and updateLeds() called FastLED.show() directly
+ * and so skipped the permutation. On a non-GRB strip that meant a solid red
+ * came out green while the identical colour delivered as a recipe came out red
+ * - the same setting, honoured or ignored depending on how the colour arrived.
+ * Latent today because every strip here is GRB, and the dropdown offers six.
+ */
 void showStrip() {
   if (g_orderPerm == 0) { FastLED.show(); return; }
   for (int i = 0; i < numLeds; i++) applyOrder(leds[i], g_orderPerm, true);
@@ -736,6 +745,21 @@ void handleOta(String url) {
    * timeout, and loop() reconnects afterwards if the update did not happen.
    */
   mqtt.disconnect();
+
+  /*
+   * Authenticate to the firmware server.
+   *
+   * The images contain this device's WiFi credentials - secrets.h is compiled
+   * in - and /fw was open to anything on the LAN, so a guest device or a
+   * compromised smart plug could list the images, fetch one and run strings on
+   * it. That is not "control of the lights", which is the documented trust
+   * boundary; it is the key to the network that boundary rests on.
+   *
+   * The token is itself compiled in, which sounds circular and is not: an
+   * attacker cannot read it without an image, and cannot get an image without
+   * it. The cycle is broken by the first flash being over USB.
+   */
+  httpUpdate.setAuthorization("ota", FIRMWARE_TOKEN);
 
   WiFiClient otaClient;
   httpUpdate.onProgress(otaProgress);

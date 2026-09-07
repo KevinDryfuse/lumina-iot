@@ -50,6 +50,9 @@ services:
       # here: this container is on a bridged network and only knows its own
       # 172.x address, which no ESP32 on the LAN can reach.
       FIRMWARE_BASE_URL: ${FIRMWARE_BASE_URL:-}
+      # Shared with FIRMWARE_TOKEN in the firmware's secrets.h. Images contain
+      # the WiFi credentials, so they are the one thing here behind a password.
+      FIRMWARE_TOKEN: ${FIRMWARE_TOKEN:-}
     ports:
       - "8001:8001"
     volumes:
@@ -72,6 +75,7 @@ services:
       dockerfile: Dockerfile
     container_name: lumina-ui
     environment:
+      FIRMWARE_TOKEN: ${FIRMWARE_TOKEN:-}
       DATABASE_URL: postgresql://${POSTGRES_USER:-lumina}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-lumina}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env - see ui/src/auth.py}
       API_URL: http://api:8001

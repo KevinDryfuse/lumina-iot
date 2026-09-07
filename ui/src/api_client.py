@@ -10,6 +10,18 @@ import httpx
 
 API_URL = os.getenv("API_URL", "http://api:8001")
 
+# The firmware routes are the one authenticated part of the API - the images
+# carry the WiFi credentials. The UI holds the same token the strips do.
+FIRMWARE_TOKEN = os.getenv("FIRMWARE_TOKEN", "")
+
+
+def _fw_auth() -> dict:
+    if not FIRMWARE_TOKEN:
+        return {}
+    import base64
+    return {"Authorization": "Basic " + base64.b64encode(
+        f"ota:{FIRMWARE_TOKEN}".encode()).decode()}
+
 
 async def get_all_devices() -> list[dict]:
     """Fetch all devices from the API."""
@@ -108,7 +120,11 @@ async def send_ota(device_id: str, file: str) -> dict:
 async def list_firmware() -> dict:
     """Firmware images staged for OTA."""
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(f"{API_URL}/firmware")
+        resp = await client.get(f"{API_URL}/firmware", headers=_fw_auth())
+        if resp.status_code in (401, 503):
+            # Do not take the whole card down because firmware listing is
+            # unavailable - it is one panel among several on that card.
+            return {"base_url": None, "images": [], "error": resp.status_code}
         resp.raise_for_status()
         return resp.json()
 
